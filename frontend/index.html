@@ -415,13 +415,7 @@
                     </div>
                     <div class="input-group floating">
                         <select id="editVersion">
-                            <option value="1.21.10">1.21.10</option>
-                            <option value="1.21.9">1.21.9</option>
-                            <option value="1.21.8">1.21.8</option>
-                            <option value="1.20.4">1.20.4</option>
-                            <option value="1.19.4">1.19.4</option>
-                            <option value="1.18.2">1.18.2</option>
-                            <option value="1.8.9">1.8.9</option>
+                            <!-- سيتم تعبئته بواسطة JavaScript -->
                         </select>
                         <label>إصدار ماينكرافت</label>
                         <span class="input-border"></span>
@@ -460,6 +454,96 @@
                 </div>
                 <div class="modal-body">
                     <iframe id="cameraFrame" class="camera-iframe" src="about:blank"></iframe>
+                </div>
+            </div>
+        </div>
+
+        <!-- نافذة التحكم المتقدم بالبوت (controlModal) -->
+        <div id="controlModal" class="modal-glass modal-full">
+            <div class="modal-glass-content-full">
+                <div class="modal-header">
+                    <h3 id="controlTitle"><i class="fas fa-gamepad"></i> التحكم بالبوت</h3>
+                    <button class="modal-close" onclick="closeBotControl()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="control-tabs">
+                    <button class="tab-btn active" data-tab="controls">🎮 تحكم</button>
+                    <button class="tab-btn" data-tab="inventory">📦 المخزون</button>
+                    <button class="tab-btn" data-tab="crafting">🔨 تصنيع</button>
+                    <button class="tab-btn" data-tab="info">📊 معلومات</button>
+                </div>
+                <div class="control-body">
+                    <div id="controlsTab" class="tab-pane active">
+                        <div class="camera-area">
+                            <div class="camera-header">📷 كاميرا المراقبة</div>
+                            <iframe id="controlCameraFrame" class="camera-iframe" src="about:blank"></iframe>
+                        </div>
+                        <div class="stats-area">
+                            <div class="stat-item"><span>❤️ الصحة:</span> <span id="statHealth">--</span></div>
+                            <div class="stat-item"><span>🍗 الجوع:</span> <span id="statFood">--</span></div>
+                            <div class="stat-item"><span>📍 الموقع:</span> <span id="statPosition">--</span></div>
+                            <div class="stat-item"><span>🛡️ الدرع:</span> <span id="statArmor">--</span></div>
+                            <div class="stat-item"><span>⚔️ السلاح:</span> <span id="statWeapon">--</span></div>
+                            <div class="stat-item"><span>📊 المستوى:</span> <span id="statLevel">--</span></div>
+                        </div>
+                        <div class="movement-buttons">
+                            <h4>🎮 الحركة</h4>
+                            <div class="move-grid">
+                                <button class="move-btn" data-cmd="moveForward">⬆️ أمام</button>
+                                <button class="move-btn" data-cmd="moveBack">⬇️ خلف</button>
+                                <button class="move-btn" data-cmd="moveLeft">⬅️ يسار</button>
+                                <button class="move-btn" data-cmd="moveRight">➡️ يمين</button>
+                                <button class="move-btn" data-cmd="jump">🦘 قفز</button>
+                                <button class="move-btn" data-cmd="stopMoving">⏹️ توقف</button>
+                            </div>
+                        </div>
+                        <div class="action-buttons">
+                            <h4>⚔️ القتال</h4>
+                            <div class="action-grid">
+                                <button class="action-btn" data-cmd="attack">🗡️ اهاجم</button>
+                                <button class="action-btn" data-cmd="sneak">🥷 انحناء</button>
+                                <button class="action-btn" data-cmd="unsneak">🧍 وقوف</button>
+                                <button class="action-btn" data-cmd="equipBest">🛡️ البس أفضل درع</button>
+                                <button class="action-btn" data-cmd="equipBestWeapon">⚔️ البس أفضل سلاح</button>
+                            </div>
+                        </div>
+                        <div class="chat-area">
+                            <h4>💬 شات</h4>
+                            <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالة...">
+                            <button class="btn-primary" onclick="sendChatMessage()">إرسال</button>
+                        </div>
+                    </div>
+                    <div id="inventoryTab" class="tab-pane">
+                        <div class="inventory-header">
+                            <h4>المخزون</h4>
+                            <button class="btn-secondary btn-sm" onclick="refreshInventory()">🔄 تحديث</button>
+                        </div>
+                        <div class="armor-stats">
+                            <div>🪖 خوذة: <span id="invHelmet">فارغ</span></div>
+                            <div>🦺 صدرية: <span id="invChest">فارغ</span></div>
+                            <div>👖 بنطلون: <span id="invLegs">فارغ</span></div>
+                            <div>👢 حذاء: <span id="invBoots">فارغ</span></div>
+                            <div>⚔️ سلاح: <span id="invWeapon">فارغ</span></div>
+                        </div>
+                        <div id="inventoryGrid" class="inventory-grid"></div>
+                    </div>
+                    <div id="craftingTab" class="tab-pane">
+                        <h4>طاولة التصنيع</h4>
+                        <div id="craftingGrid" class="crafting-grid"></div>
+                        <div class="recipes-list">
+                            <button class="recipe-btn" data-recipe="wooden_sword">🗡️ سيف خشب</button>
+                            <button class="recipe-btn" data-recipe="stone_sword">🗡️ سيف حجر</button>
+                            <button class="recipe-btn" data-recipe="iron_sword">🗡️ سيف حديد</button>
+                            <button class="recipe-btn" data-recipe="diamond_sword">🗡️ سيف ألماس</button>
+                        </div>
+                    </div>
+                    <div id="infoTab" class="tab-pane">
+                        <div class="info-card">
+                            <div>🏆 المستوى: <span id="detailLevel">--</span></div>
+                            <div>✨ الخبرة: <span id="detailXp">--</span></div>
+                            <div>☠️ القتلى: <span id="detailKills">--</span></div>
+                            <div>💀 الوفيات: <span id="detailDeaths">--</span></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

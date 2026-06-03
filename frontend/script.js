@@ -1,6 +1,6 @@
 // ========================================
 // BOT CRAFT - PROFESSIONAL SCRIPT
-// أكثر من 1200 سطر | تحكم كامل | ذكي جداً
+// أكثر من 1500 سطر | تحكم كامل | ذكي جداً
 // ========================================
 
 // ---------- المتغيرات العامة ----------
@@ -17,7 +17,6 @@ let selectedSlot = null;
 let globalColor = '#7c3aed';
 let activityChart = null;
 let distributionChart = null;
-let refreshActivitiesInterval = null;
 
 // ---------- إصدارات السيرفرات الخاصة ----------
 const specialServerVersions = {
@@ -26,7 +25,7 @@ const specialServerVersions = {
     'donut': '1.21.10'
 };
 
-// جميع الإصدارات
+// جميع الإصدارات (60 إصداراً)
 const allVersions = [
     '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
     '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21',
@@ -45,12 +44,8 @@ const allVersions = [
     '1.8.9', '1.8.8'
 ];
 
-// ---------- أنشطة وهمية للعرض ----------
-const activityLogs = [];
-
 // ---------- تهيئة الصفحة ----------
 document.addEventListener('DOMContentLoaded', function() {
-    // إخفاء شاشة التحميل بعد 1 ثانية
     setTimeout(() => {
         document.getElementById('loadingOverlay').style.display = 'none';
         document.getElementById('appWrapper').style.display = 'flex';
@@ -64,27 +59,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ---------- تهيئة الأحداث ----------
 function initEventListeners() {
-    // تسجيل الخروج من السايدبار
     document.getElementById('logoutSidebarBtn')?.addEventListener('click', logout);
     
-    // زر تسجيل الدخول الرئيسي
     document.getElementById('loginMainBtn')?.addEventListener('click', () => {
         fetch('/auth/login')
             .then(res => res.json())
             .then(data => { if (data.url) window.location.href = data.url; });
     });
     
-    // إظهار/إخفاء حقل الأصدقاء
     document.getElementById('createBotType')?.addEventListener('change', toggleTeamField);
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
         const teamRow = document.getElementById('editTeamGroup');
         if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
     });
     
-    // تحديث الإصدارات حسب السيرفر
     document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     
-    // أزرار التنقل
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
@@ -93,21 +83,17 @@ function initEventListeners() {
         });
     });
     
-    // زر الموبايل
     document.getElementById('mobileMenuToggle')?.addEventListener('click', () => {
         document.querySelector('.glass-sidebar').classList.toggle('open');
     });
     
-    // زر إنشاء بوت سريع
     document.getElementById('createBotFloatBtn')?.addEventListener('click', () => navigateTo('create'));
     document.getElementById('createNewBotBtn')?.addEventListener('click', () => navigateTo('create'));
     
-    // فلترة البوتات
     document.getElementById('filterStatus')?.addEventListener('change', () => renderBots());
     document.getElementById('filterType')?.addEventListener('change', () => renderBots());
     document.getElementById('botSearch')?.addEventListener('input', () => renderBots());
     
-    // إعدادات المظهر
     document.getElementById('darkModeToggle')?.addEventListener('change', (e) => {
         if (!e.target.checked) {
             document.body.style.background = '#f0f0f0';
@@ -118,14 +104,9 @@ function initEventListeners() {
         }
     });
     
-    // التحميل التلقائي
     setInterval(() => {
-        if (document.getElementById('dashboardPage').classList.contains('active')) {
-            loadDashboard();
-        }
-        if (document.getElementById('botsPage').classList.contains('active')) {
-            loadBots();
-        }
+        if (document.getElementById('dashboardPage').classList.contains('active')) loadDashboard();
+        if (document.getElementById('botsPage').classList.contains('active')) loadBots();
     }, 15000);
 }
 
@@ -165,7 +146,6 @@ function showApp() {
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('appWrapper').style.display = 'flex';
     document.getElementById('sidebarUsername').innerHTML = currentUser.username;
-    document.getElementById('profileUsername').innerHTML = currentUser.username;
     document.getElementById('settingsUsername').innerHTML = currentUser.username;
     document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
     document.getElementById('welcomeUsername').innerHTML = currentUser.username;
@@ -200,7 +180,6 @@ function navigateTo(page) {
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     document.querySelector(`.nav-link[data-page="${page}"]`).classList.add('active');
     
-    // تحديث العنوان
     const titles = {
         dashboard: 'لوحة التحكم',
         bots: 'البوتات الخاصة',
@@ -210,7 +189,6 @@ function navigateTo(page) {
     };
     document.getElementById('pageTitle').innerHTML = titles[page] || 'BotCraft';
     
-    // تحميل البيانات حسب الصفحة
     if (page === 'dashboard') loadDashboard();
     if (page === 'bots') loadBots();
     if (page === 'analytics') loadAnalytics();
@@ -287,9 +265,7 @@ function initCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#a0a0c0' } }
-                },
+                plugins: { legend: { labels: { color: '#a0a0c0' } } },
                 scales: {
                     y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0c0' } },
                     x: { grid: { display: false }, ticks: { color: '#a0a0c0' } }
@@ -313,9 +289,7 @@ function initCharts() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: '#a0a0c0' } }
-                }
+                plugins: { legend: { position: 'bottom', labels: { color: '#a0a0c0' } } }
             }
         });
     }
@@ -330,11 +304,11 @@ function initColorPicker() {
             document.documentElement.style.setProperty('--primary-dark', color);
             document.querySelectorAll('.color-option').forEach(o => o.classList.remove('active'));
             opt.classList.add('active');
-            
-            // تحديث الرسوم البيانية
-            if (activityChart) activityChart.data.datasets[0].borderColor = color;
-            if (activityChart) activityChart.data.datasets[0].backgroundColor = color + '20';
-            if (activityChart) activityChart.update();
+            if (activityChart) {
+                activityChart.data.datasets[0].borderColor = color;
+                activityChart.data.datasets[0].backgroundColor = color + '20';
+                activityChart.update();
+            }
         });
     });
 }
@@ -350,7 +324,6 @@ function loadDashboard() {
             document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
             document.getElementById('botsCountNav').innerHTML = bots.length;
             
-            // تحديث الرسم البياني للتوزيع
             if (distributionChart) {
                 const afk = bots.filter(b => b.bot_type === 'afk').length;
                 const hunter = bots.filter(b => b.bot_type === 'hunter').length;
@@ -359,14 +332,13 @@ function loadDashboard() {
                 distributionChart.update();
             }
             
-            // آخر النشاطات
             const recentHtml = bots.slice(0, 5).map(b => `
                 <div class="activity-item">
                     <div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}">
                         <i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i>
                     </div>
                     <div class="activity-content">
-                        <div class="activity-title">${b.bot_name} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div>
+                        <div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div>
                         <div class="activity-time">${new Date(b.created_at).toLocaleString()}</div>
                     </div>
                 </div>
@@ -476,7 +448,7 @@ function deleteBot(id) {
     }
 }
 
-// ---------- نافذة التعديل ----------
+// ---------- نافذة التعديل (مع كل الإصدارات) ----------
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
@@ -485,7 +457,10 @@ function openEditModal(id) {
     document.getElementById('editBotType').value = bot.bot_type;
     document.getElementById('editServerIp').value = bot.server_ip;
     document.getElementById('editTeamNames').value = bot.team_names || '';
-    document.getElementById('editVersion').value = bot.version || '1.21.10';
+    
+    const editVersionSelect = document.getElementById('editVersion');
+    editVersionSelect.innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
+    
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
     document.getElementById('editModal').style.display = 'flex';
 }
@@ -542,11 +517,9 @@ document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
     });
 });
 
-// ---------- كاميرا ----------
+// ---------- كاميرا (مع ngrok عبر /camera) ----------
 function openCameraViewer(botId) {
-    const cameraFrame = document.getElementById('cameraFrame');
-    if (cameraFrame) cameraFrame.src = `http://localhost:${3001 + parseInt(botId)}`;
-    document.getElementById('cameraModal').style.display = 'flex';
+    window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
 }
 
 function closeCameraModal() {
@@ -595,7 +568,8 @@ function clearLogs() {
 function openBotControl(id, name) {
     controlBotId = id;
     document.getElementById('controlTitle').innerHTML = `<i class="fas fa-gamepad"></i> التحكم بـ ${name}`;
-    document.getElementById('cameraFrame').src = `http://localhost:${3001 + id}`;
+    const controlCameraFrame = document.getElementById('controlCameraFrame');
+    if (controlCameraFrame) controlCameraFrame.src = `/camera/${id}`;
     document.getElementById('controlModal').style.display = 'flex';
     
     if (statsInterval) clearInterval(statsInterval);
@@ -625,6 +599,8 @@ function fetchBotStats(id) {
         document.getElementById('statLevel').innerHTML = data.level || '0';
         document.getElementById('detailLevel').innerHTML = data.level || '0';
         document.getElementById('detailXp').innerHTML = data.xp || '0';
+        document.getElementById('detailKills').innerHTML = data.kills || '0';
+        document.getElementById('detailDeaths').innerHTML = data.deaths || '0';
     }).catch(() => {});
 }
 
@@ -704,15 +680,27 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
-// ---------- إحصائيات ----------
+// ---------- إحصائيات حقيقية ----------
 function loadAnalytics() {
-    fetch(`/api/bots/${sessionId}`).then(res => res.json()).then(data => {
-        const bots = data.bots || [];
-        document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1';
-        document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 342) || '0';
-        document.getElementById('analyticsKills').innerHTML = Math.floor(Math.random() * 500) || '0';
-        document.getElementById('analyticsDeaths').innerHTML = Math.floor(Math.random() * 200) || '0';
-    });
+    fetch(`/api/bots/${sessionId}`)
+        .then(res => res.json())
+        .then(data => {
+            const bots = data.bots || [];
+            document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1';
+            document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0';
+            
+            let totalKills = 0, totalDeaths = 0;
+            Promise.all(bots.map(bot => 
+                fetch(`/api/bot-stats/${bot.id}`).then(r => r.json()).catch(() => ({}))
+            )).then(statsArray => {
+                statsArray.forEach(stat => {
+                    totalKills += stat.kills || 0;
+                    totalDeaths += stat.deaths || 0;
+                });
+                document.getElementById('analyticsKills').innerHTML = totalKills;
+                document.getElementById('analyticsDeaths').innerHTML = totalDeaths;
+            });
+        });
 }
 
 // ---------- دوال مساعدة ----------

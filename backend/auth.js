@@ -1,4 +1,5 @@
 const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { authenticate } = require('@xboxreplay/xboxlive-auth');
 const axios = require('axios');
 
 const msalConfig = {
@@ -8,12 +9,11 @@ const msalConfig = {
     clientSecret: process.env.CLIENT_SECRET,
   }
 };
-
 const msalClient = new ConfidentialClientApplication(msalConfig);
 
 async function getAuthUrl() {
   const authUrlParams = {
-    scopes: ['User.Read', 'offline_access'],
+    scopes: ['User.Read', 'offline_access', 'XboxLive.signin'],
     redirectUri: process.env.REDIRECT_URI,
   };
   return await msalClient.getAuthCodeUrl(authUrlParams);
@@ -22,7 +22,7 @@ async function getAuthUrl() {
 async function getTokenFromCode(code) {
   const tokenRequest = {
     code: code,
-    scopes: ['User.Read', 'offline_access'],
+    scopes: ['User.Read', 'offline_access', 'XboxLive.signin'],
     redirectUri: process.env.REDIRECT_URI,
   };
   return await msalClient.acquireTokenByCode(tokenRequest);
@@ -30,24 +30,27 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
   try {
-    console.log('📡 Getting user info from Microsoft Graph...');
     const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
-    
-    const username = graphResponse.data.displayName || graphResponse.data.userPrincipalName.split('@')[0];
-    const uuid = 'temp-' + Math.random().toString(36).substring(2, 15);
-    
-    console.log(`✅ User info obtained: ${username}`);
-    console.log(`⚠️ Note: Using temporary UUID (Minecraft auth skipped for now)`);
-    
+    const email = graphResponse.data.userPrincipalName;
+    const username = graphResponse.data.displayName || email.split('@')[0];
+
+    const xboxAuth = await authenticate(email, accessToken);
+    const profileRes = await axios.get('https://api.minecraftservices.com/minecraft/profile', {
+      headers: { Authorization: `Bearer ${xboxAuth.accessToken}` }
+    });
+    const uuid = profileRes.data.id;
+    const mcUsername = profileRes.data.name;
+
+    console.log(`✅ ماينكرافت: ${mcUsername} (UUID: ${uuid})`);
     return {
       uuid: uuid,
-      username: username,
-      minecraftToken: 'temp-token-' + Date.now()
+      username: mcUsername,
+      minecraftToken: xboxAuth.accessToken
     };
   } catch (error) {
-    console.error('Failed to get user info:', error.message);
+    console.error('❌ فشل الحصول على بيانات ماينكرافت:', error.message);
     return {
       uuid: 'fallback-' + Math.random().toString(36).substring(2, 10),
       username: 'MinecraftUser',

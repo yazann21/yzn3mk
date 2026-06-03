@@ -15,11 +15,14 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-session": "^1.19.0",
     "minecraft-data": "^3.51.0",
     "minecraft-protocol": "^1.66.2",
     "mineflayer": "^4.37.1",
     "mineflayer-pathfinder": "^2.4.5",
+    "ngrok": "^5.0.0-beta.2",
     "prismarine-viewer": "^1.33.0",
+    "session-file-store": "^1.5.0",
     "socket.io": "^4.5.4",
     "sqlite3": "^5.1.6"
   }
