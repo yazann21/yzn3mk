@@ -13,10 +13,9 @@ let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
 let teamList = [];
-let botStats = { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', xp: 0, level: 0 };
 let gearCheckInterval = null;
 let healthCheckInterval = null;
-let lastAttacker = null;
+let autoTotemInterval = null;
 
 const args = process.argv.slice(2);
 const config = {
@@ -35,45 +34,40 @@ const logDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
 logFile = fs.createWriteStream(path.join(logDir, `bot-${config.botId}.log`), { flags: 'a' });
 
-function log(msg) { console.log(msg); logFile.write(`[${new Date().toISOString()}] ${msg}\n`); if (process.send) process.send({ type: 'log', message: msg }); }
+function log(msg) { 
+  const timestamp = new Date().toISOString();
+  const shortMsg = msg.length > 200 ? msg.substring(0, 200) + '...' : msg;
+  console.log(`[${timestamp}] ${shortMsg}`); 
+  logFile.write(`[${timestamp}] ${msg}\n`); 
+  if (process.send) process.send({ type: 'log', message: msg }); 
+}
 
+// ========== إحصائيات البوت ==========
 function updateStats() {
   if (!bot || !bot.entity) return;
-  botStats = {
+  const stats = {
     health: bot.health || 20,
     food: bot.food || 20,
     position: `${Math.floor(bot.entity.position.x)}, ${Math.floor(bot.entity.position.y)}, ${Math.floor(bot.entity.position.z)}`,
     armor: getBestArmorName(),
     weapon: getBestWeaponName(),
-    xp: bot.experience?.level || 0,
     level: bot.experience?.level || 0
   };
-  if (process.send) process.send({ type: 'stats', stats: botStats });
+  if (process.send) process.send({ type: 'stats', stats: stats });
 }
 
-function getInventory() {
-  if (!bot || !bot.inventory) return { inventory: [], helmet: 'فارغ', chest: 'فارغ', legs: 'فارغ', boots: 'فارغ', weapon: 'فارغ', totem: 'لا يوجد' };
-  const items = bot.inventory.slots.map(slot => slot ? { name: slot.name, count: slot.count, slot: slot.slot } : null);
-  const helmet = bot.inventory.slots[5]?.name || 'فارغ';
-  const chest = bot.inventory.slots[6]?.name || 'فارغ';
-  const legs = bot.inventory.slots[7]?.name || 'فارغ';
-  const boots = bot.inventory.slots[8]?.name || 'فارغ';
-  const weapon = bot.inventory.slots[bot.getEquipmentDestSlot('hand')]?.name || 'فارغ';
-  const totem = bot.inventory.items().find(i => i.name.includes('totem')) ? '✅ يوجد' : '❌ لا يوجد';
-  return { inventory: items.slice(9, 45), helmet, chest, legs, boots, weapon, totem };
-}
-
+// ========== الحصول على أفضل درع ==========
 function getBestArmorName() {
   const armorTypes = ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'];
   for (const type of armorTypes) {
     const chest = bot.inventory.items().find(i => i.name.includes(`${type}_chestplate`));
-    if (chest) return `${type}`;
+    if (chest) return type;
   }
   return 'لا يوجد';
 }
 
 function getBestWeaponName() {
-  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword', 'netherite_axe', 'diamond_axe', 'iron_axe'];
+  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
   for (const type of weaponTypes) {
     const weapon = bot.inventory.items().find(i => i.name.includes(type));
     if (weapon) return weapon.name.replace('_', ' ');
@@ -82,7 +76,7 @@ function getBestWeaponName() {
 }
 
 function getBestWeapon() {
-  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword', 'netherite_axe', 'diamond_axe', 'iron_axe'];
+  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
   for (const type of weaponTypes) {
     const weapon = bot.inventory.items().find(item => item.name.includes(type));
     if (weapon) return weapon;
@@ -92,6 +86,81 @@ function getBestWeapon() {
 
 function hasTotem() {
   return bot.inventory.items().some(i => i.name.includes('totem'));
+}
+
+// ========== تجهيز كل المعدات بسرعة ==========
+function equipEverythingFast() {
+  try {
+    const armorSlots = [
+      { type: 'helmet', slot: 'head', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'chestplate', slot: 'torso', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'leggings', slot: 'legs', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'boots', slot: 'feet', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] }
+    ];
+    
+    for (const armor of armorSlots) {
+      for (const material of armor.order) {
+        const item = bot.inventory.items().find(i => i.name.includes(`${material}_${armor.type}`));
+        if (item) {
+          bot.equip(item, armor.slot);
+          break;
+        }
+      }
+    }
+    
+    const weapon = getBestWeapon();
+    if (weapon) bot.equip(weapon, 'hand');
+    
+    // تجهيز التوتم
+    const totem = bot.inventory.items().find(i => i.name.includes('totem'));
+    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) {
+      bot.equip(totem, 'off-hand');
+    }
+  } catch (err) {}
+}
+
+// ========== Auto Totem - يجهز التوتم باستمرار ==========
+function autoTotem() {
+  if (!bot || !bot.inventory) return;
+  try {
+    const totem = bot.inventory.items().find(i => i.name.includes('totem_of_undying') || i.name.includes('totem'));
+    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) {
+      const currentOffHand = bot.inventory.slots[45];
+      if (!currentOffHand || !currentOffHand.name.includes('totem')) {
+        bot.equip(totem, 'off-hand');
+      }
+    }
+  } catch (err) {}
+}
+
+// ========== حركات نوكباك ذكية (crits + strafing) ==========
+let critMode = false;
+let strafeDirection = 1;
+
+function smartAttack(entity) {
+  if (!entity || !bot.entity) return;
+  
+  const distance = bot.entity.position.distanceTo(entity.position);
+  
+  // ضربات حرجة (قفز قبل الضرب)
+  if (!bot.entity.isOnGround && distance < 3.5) {
+    bot.attack(entity);
+    critMode = true;
+  } 
+  // ضربات عادية
+  else if (distance < 3.5) {
+    bot.attack(entity);
+    // حركة مراوغة ذكية (strafing)
+    if (Math.random() < 0.3) {
+      strafeDirection = -strafeDirection;
+      bot.setControlState('left', strafeDirection === 1);
+      bot.setControlState('right', strafeDirection === -1);
+      setTimeout(() => {
+        bot.setControlState('left', false);
+        bot.setControlState('right', false);
+      }, 200);
+    }
+  }
 }
 
 function findNearestEntity() {
@@ -105,80 +174,26 @@ function findNearestEntity() {
   return nearest;
 }
 
+function findNearestPlayer() {
+  if (!bot || !bot.players) return null;
+  let nearest = null, nearestDist = 20;
+  for (const [name, player] of Object.entries(bot.players)) {
+    if (!player.entity || player.entity === bot.entity) continue;
+    if (teamList.includes(name.toLowerCase())) continue;
+    const dist = bot.entity.position.distanceTo(player.entity.position);
+    if (dist < nearestDist) { nearest = player.entity; nearestDist = dist; }
+  }
+  return nearest;
+}
+
 function cleanup() {
   if (combatInterval) clearInterval(combatInterval);
   if (huntInterval) clearInterval(huntInterval);
   if (gearCheckInterval) clearInterval(gearCheckInterval);
   if (healthCheckInterval) clearInterval(healthCheckInterval);
-  combatInterval = huntInterval = gearCheckInterval = healthCheckInterval = null;
+  if (autoTotemInterval) clearInterval(autoTotemInterval);
+  combatInterval = huntInterval = gearCheckInterval = healthCheckInterval = autoTotemInterval = null;
   currentTarget = null;
-  lastAttacker = null;
-}
-
-// ========== لبس كل شيء فوراً (مو حبة حبة) ==========
-function equipEverythingFast() {
-  try {
-    // لبس جميع قطع الدرع دفعة واحدة
-    const armorTypes = [
-      { type: 'helmet', slot: 'head', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
-      { type: 'chestplate', slot: 'torso', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
-      { type: 'leggings', slot: 'legs', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
-      { type: 'boots', slot: 'feet', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] }
-    ];
-    
-    let equipped = false;
-    for (const armor of armorTypes) {
-      for (const material of armor.order) {
-        const item = bot.inventory.items().find(i => i.name.includes(`${material}_${armor.type}`));
-        if (item) {
-          bot.equip(item, armor.slot);
-          log(`🛡️ لبس ${material}_${armor.type}`);
-          equipped = true;
-          break;
-        }
-      }
-    }
-    
-    // لبس أفضل سلاح
-    const weapon = getBestWeapon();
-    if (weapon) {
-      bot.equip(weapon, 'hand');
-      log(`⚔️ لبس ${weapon.name}`);
-    }
-    
-    // تجهيز التوتم في اليد الثانية (off-hand)
-    const totem = bot.inventory.items().find(i => i.name.includes('totem'));
-    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) {
-      bot.equip(totem, 'off-hand');
-      log(`🪄 تم تجهيز التوتم في اليد الثانية`);
-    } else if (totem) {
-      log(`🪄 يوجد توتم في المخزون (النسخة ما تدعم اليد الثانية)`);
-    }
-    
-    if (equipped) log(`✅ تم تجهيز المعدات بالكامل`);
-  } catch (err) {
-    log(`⚠️ خطأ في التجهيز: ${err.message}`);
-  }
-}
-
-// ========== فحص الصحة والتوتم بشكل مستمر ==========
-function healthAndTotemCheck() {
-  if (!bot || !bot.entity) return;
-  
-  // فحص الصحة - إذا الصحة قليلة، حاول يهرب أو يستخدم التوتم
-  if (bot.health < 8) {
-    log(`⚠️ الصحة منخفضة (${bot.health}), محاولة الابتعاد...`);
-    if (hasTotem()) {
-      log(`🪄 يوجد توتم، سينشط تلقائياً عند الموت`);
-    } else {
-      log(`😨 لا يوجد توتم، يفضل الابتعاد عن القتال`);
-    }
-  }
-  
-  // فحص التوتم بشكل مستمر وإشعار
-  if (hasTotem()) {
-    // كل شيء تمام
-  }
 }
 
 function autoEat() {
@@ -186,27 +201,24 @@ function autoEat() {
     const food = bot.inventory.items().find(i => 
       i.name.includes('bread') || i.name.includes('apple') || 
       i.name.includes('cooked') || i.name.includes('steak') ||
-      i.name.includes('porkchop') || i.name.includes('golden_carrot')
+      i.name.includes('golden_carrot')
     );
     if (food) { 
       bot.equip(food, 'hand'); 
       bot.consume(); 
-      log(`🍎 أكل ${food.name}`);
     }
   }
 }
 
+// ========== مطاردة وهجوم متواصل ==========
 function followAndAttack(entity, name) {
-  if (currentTarget === name) return;
+  if (currentTarget === name || !entity) return;
   currentTarget = name;
-  log(`🏃 يطارد ${name}!`);
   
-  // استخدام GoalFollow للمطاردة الذكية مع مسافة مناسبة
   bot.pathfinder.setGoal(new GoalFollow(entity, 2.5), true);
   
   if (combatInterval) clearInterval(combatInterval);
   
-  // هجوم سريع وذكي
   combatInterval = setInterval(() => {
     if (!entity || !entity.position || !bot.entity) { 
       clearInterval(combatInterval); 
@@ -216,119 +228,83 @@ function followAndAttack(entity, name) {
     
     const distance = bot.entity.position.distanceTo(entity.position);
     
-    // إذا كان قريب كفاية، يضرب
-    if (distance < 3.5) {
-      const weapon = getBestWeapon();
-      if (weapon) bot.equip(weapon, 'hand');
-      
-      // يضرب بسرعة (كل 0.3 ثانية)
-      bot.attack(entity);
-      log(`⚔️ يضرب ${name}! (المسافة: ${distance.toFixed(1)})`);
-    }
-    // إذا كان بعيد، يستمر في المطاردة
-    else if (distance < 10) {
+    if (distance < 4) {
+      smartAttack(entity);
+    } else if (distance < 15) {
       bot.pathfinder.setGoal(new GoalFollow(entity, 2.5), true);
     }
     
-  }, 300); // 0.3 ثانية بين الضربات
-  
-  // يوقف القتال بعد 45 ثانية (يضل يضرب لحد ما يقتل)
-  setTimeout(() => { 
-    if (combatInterval) { 
-      clearInterval(combatInterval); 
-      combatInterval = null; 
-      currentTarget = null; 
-      bot.pathfinder.setGoal(null);
-      log(`⏹️ توقف عن مطاردة ${name} (وقت القتال انتهى)`);
-    } 
-  }, 45000);
+  }, 250); // أسرع بين الضربات
 }
 
 function attackNearest() {
-  const nearest = findNearestEntity();
+  const nearest = findNearestPlayer();
   if (nearest) {
-    const player = bot.players[nearest.username];
-    if (player && !teamList.includes(player.username.toLowerCase())) {
-      followAndAttack(nearest, nearest.username);
-    } else if (!player) {
-      followAndAttack(nearest, 'مخلوق');
+    const playerName = Object.keys(bot.players).find(name => bot.players[name].entity === nearest);
+    if (playerName && !teamList.includes(playerName.toLowerCase())) {
+      followAndAttack(nearest, playerName);
     }
   }
 }
 
+// ========== تشغيل البوت ==========
 function createBot() {
   cleanup();
-  log(`🤖 تشغيل بوت ذكي (${config.botType}) على ${config.serverIp} [${config.version}]`);
+  
+  let version = config.version;
+  if (config.serverIp.includes('hypixel.net')) version = '1.8.9';
+  else if (version === 'auto') version = '1.21.10';
+  
+  log(`تشغيل بوت ${config.botType} على ${config.serverIp}`);
   
   bot = mineflayer.createBot({
-    host: config.serverIp, username: config.username, auth: 'microsoft', version: config.version,
-    checkTimeoutInterval: 0, chatLengthLimit: 256, connectTimeout: 60000, keepAlive: true, viewDistance: 'tiny'
+    host: config.serverIp,
+    username: config.username,
+    auth: 'microsoft',
+    version: version,
+    checkTimeoutInterval: 0,
+    chatLengthLimit: 256,
+    connectTimeout: 60000,
+    keepAlive: true,
+    viewDistance: 'tiny'
   });
 
   bot.loadPlugin(pathfinder);
 
-  bot.on('login', () => log(`✅ دخل البوت بنجاح`));
+  bot.on('login', () => {});
   
   bot.on('spawn', () => {
-    log(`📍 ظهر البوت في العالم`);
-    try { 
-      const mcData = require('minecraft-data')(bot.version); 
-      const defaultMove = new Movements(bot, mcData); 
-      bot.pathfinder.setMovements(defaultMove); 
-    } catch (err) {}
+    // تجهيز كل شيء فوراً
+    setTimeout(() => equipEverythingFast(), 500);
     
-    // تجهيز المعدات فوراً
-    equipEverythingFast();
-    
-    // فحص المعدات كل ثانية (مو كل 5 ثواني)
+    // فحص المعدات كل ثانية
     gearCheckInterval = setInterval(() => equipEverythingFast(), 1000);
     
-    // فحص الصحة والتوتم كل ثانية
-    healthCheckInterval = setInterval(() => healthAndTotemCheck(), 1000);
+    // Auto Totem كل نصف ثانية
+    autoTotemInterval = setInterval(() => autoTotem(), 500);
     
-    // تحديث الإحصائيات كل ثانية
-    setInterval(updateStats, 1000);
-    
-    // فحص الجوع كل ثانية
+    setInterval(() => updateStats(), 1000);
     setInterval(() => autoEat(), 1000);
     
+    // كاميرا
     if (!viewerStarted) {
       try { 
         const viewerPort = 3001 + parseInt(config.botId); 
         require('prismarine-viewer').mineflayer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 }); 
-        log(`🎥 كاميرا: http://localhost:${viewerPort}`); 
         viewerStarted = true; 
       } catch (err) {}
     }
     
     if (config.botType === 'afk') {
-      log('😴 وضع المأفك الذكي - يضرب بقوة ويحاول يتجنب الموت');
-      bot.on('entityHurt', (e) => { 
-        if (e === bot.entity) {
-          const attacker = findNearestEntity();
-          if (attacker) log(`💥 انضرب! يرد الهجوم بقوة`);
-          attackNearest(); 
-        } 
-      });
+      bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     } 
     else if (config.botType === 'hunter') {
-      log('⚔️ وضع الصياد الذكي - يبحث عن اللاعبين ويطاردهم');
-      huntInterval = setInterval(() => {
-        for (const [name, p] of Object.entries(bot.players)) {
-          if (p.entity && p.entity !== bot.entity && !teamList.includes(name.toLowerCase())) {
-            log(`🎯 صيد: ${name}`);
-            followAndAttack(p.entity, name);
-            break;
-          }
-        }
-      }, 2000); // كل ثانيتين
+      huntInterval = setInterval(() => attackNearest(), 2000);
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     }
     else if (config.botType === 'coward') {
-      log('😨 وضع الجبان');
       bot.on('entityHurt', (e) => {
         if (e === bot.entity) {
-          log(`😨 انضرب البوت! يتم قطع الاتصال`);
           isRunning = false;
           bot.end();
           process.exit(0);
@@ -337,20 +313,10 @@ function createBot() {
     }
   });
 
-  bot.on('death', () => {
-    log('💀 مات البوت');
-    setTimeout(() => equipEverythingFast(), 1000);
-  });
-  
-  bot.on('respawn', () => {
-    log(`🔄 ظهر البوت من جديد`);
-    setTimeout(() => equipEverythingFast(), 1000);
-  });
-
-  bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
-  bot.on('error', (err) => log(`⚠️ خطأ: ${err.message}`));
+  bot.on('death', () => { setTimeout(() => equipEverythingFast(), 1000); });
+  bot.on('respawn', () => { setTimeout(() => equipEverythingFast(), 1000); });
+  bot.on('end', (reason) => { cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
 }
 
-process.on('SIGINT', () => { log('🛑 إغلاق'); isRunning = false; cleanup(); if (bot) bot.end(); if (logFile) logFile.end(); process.exit(0); });
+process.on('SIGINT', () => { isRunning = false; cleanup(); if (bot) bot.end(); process.exit(0); });
 createBot();

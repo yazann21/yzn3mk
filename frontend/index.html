@@ -2,341 +2,491 @@
 <html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Bot Controller | لوحة تحكم متقدمة</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>BotCraft | لوحة تحكم بوتات ماينكرافت</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
-    <div class="app-container">
-        <!-- الشريط الجانبي -->
-        <aside class="side-nav">
-            <div class="logo-section">
-                <div class="logo-icon">⚔️</div>
-                <div class="logo-text">Bot<span>Control</span></div>
-            </div>
-            <div class="nav-menu">
-                <button class="nav-item active" data-page="dashboard">
-                    <span class="nav-icon">📊</span>
-                    <span class="nav-text">لوحة التحكم</span>
-                </button>
-                <button class="nav-item" data-page="bots">
-                    <span class="nav-icon">🤖</span>
-                    <span class="nav-text">البوتات الخاصة</span>
-                </button>
-                <button class="nav-item" data-page="create">
-                    <span class="nav-icon">✨</span>
-                    <span class="nav-text">إنشاء بوت</span>
-                </button>
-                <button class="nav-item" data-page="settings">
-                    <span class="nav-icon">⚙️</span>
-                    <span class="nav-text">الإعدادات</span>
-                </button>
-            </div>
-            <div class="user-profile" id="userProfile" style="display: none;">
-                <div class="profile-avatar">👤</div>
-                <div class="profile-info">
-                    <div class="profile-name" id="profileUsername"></div>
-                    <div class="profile-status">🟢 متصل</div>
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loader"></div>
+        <p>جاري تحميل BotCraft...</p>
+    </div>
+
+    <div class="app-wrapper" id="appWrapper" style="display: none;">
+        <!-- شريط جانبي فاخر -->
+        <aside class="glass-sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon"><i class="fas fa-robot"></i></div>
+                    <div class="logo-text">Bot<span>Craft</span></div>
                 </div>
-                <button id="logoutButton" class="logout-icon">🚪</button>
+                <div class="sidebar-badge">v3.0</div>
+            </div>
+            
+            <div class="sidebar-user" id="userSidebar" style="display: none;">
+                <div class="user-avatar" id="userAvatar">👤</div>
+                <div class="user-info">
+                    <div class="user-name" id="sidebarUsername"></div>
+                    <div class="user-status"><span class="status-badge online"></span> متصل</div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-link active" data-page="dashboard">
+                    <i class="fas fa-chart-line"></i>
+                    <span>لوحة التحكم</span>
+                    <span class="nav-badge"></span>
+                </a>
+                <a href="#" class="nav-link" data-page="bots">
+                    <i class="fas fa-robot"></i>
+                    <span>بوتاتي</span>
+                    <span class="nav-badge" id="botsCountNav">0</span>
+                </a>
+                <a href="#" class="nav-link" data-page="create">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>بوت جديد</span>
+                </a>
+                <a href="#" class="nav-link" data-page="analytics">
+                    <i class="fas fa-chart-simple"></i>
+                    <span>إحصائيات</span>
+                </a>
+                <a href="#" class="nav-link" data-page="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>الإعدادات</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="logoutSidebarBtn" class="logout-glass-btn">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>تسجيل الخروج</span>
+                </button>
+                <div class="server-status">
+                    <i class="fas fa-server"></i>
+                    <span>السحابة: <span id="cloudStatus">🟢 نشطة</span></span>
+                </div>
             </div>
         </aside>
 
         <!-- المحتوى الرئيسي -->
-        <main class="main-panel">
-            <!-- صفحة لوحة التحكم -->
-            <div id="dashboardPage" class="page-content active">
-                <div class="page-header">
-                    <div>
-                        <h1>لوحة التحكم</h1>
-                        <p>مرحباً بك، <span id="welcomeUsername"></span></p>
+        <main class="main-content">
+            <!-- شريط علوي فاخر -->
+            <header class="glass-header">
+                <div class="header-left">
+                    <button class="mobile-menu-toggle" id="mobileMenuToggle"><i class="fas fa-bars"></i></button>
+                    <div class="page-title">
+                        <h1 id="pageTitle">لوحة التحكم</h1>
+                        <p id="pageSubtitle" class="text-muted">مرحباً بعودتك</p>
                     </div>
                 </div>
-                <div class="stats-cards">
-                    <div class="stat-card stat-card-purple">
-                        <div class="stat-value" id="statTotalBots">0</div>
-                        <div class="stat-label">إجمالي البوتات</div>
-                        <div class="stat-icon">🤖</div>
+                <div class="header-right">
+                    <div class="header-search">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="بحث..." id="globalSearch">
                     </div>
-                    <div class="stat-card stat-card-green">
-                        <div class="stat-value" id="statOnlineBots">0</div>
-                        <div class="stat-label">بوتات متصلة</div>
-                        <div class="stat-icon">🟢</div>
-                    </div>
-                    <div class="stat-card stat-card-blue">
-                        <div class="stat-value" id="statServers">0</div>
-                        <div class="stat-label">سيرفرات نشطة</div>
-                        <div class="stat-icon">🌐</div>
+                    <div class="header-notifications">
+                        <i class="fas fa-bell"></i>
+                        <span class="notif-badge">3</span>
                     </div>
                 </div>
-                <div class="section-title">
-                    <h3>📋 آخر البوتات</h3>
+            </header>
+
+            <!-- ========== صفحة لوحة التحكم ========== -->
+            <div id="dashboardPage" class="page">
+                <div class="stats-grid">
+                    <div class="stat-card glass">
+                        <div class="stat-icon purple"><i class="fas fa-robot"></i></div>
+                        <div class="stat-info">
+                            <h3 class="stat-value" id="statTotalBots">0</h3>
+                            <p class="stat-label">إجمالي البوتات</p>
+                        </div>
+                        <div class="stat-trend up">+12%</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon green"><i class="fas fa-plug"></i></div>
+                        <div class="stat-info">
+                            <h3 class="stat-value" id="statOnlineBots">0</h3>
+                            <p class="stat-label">بوتات متصلة</p>
+                        </div>
+                        <div class="stat-trend up">+5%</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon blue"><i class="fas fa-globe"></i></div>
+                        <div class="stat-info">
+                            <h3 class="stat-value" id="statServers">0</h3>
+                            <p class="stat-label">سيرفرات نشطة</p>
+                        </div>
+                        <div class="stat-trend down">-2%</div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon orange"><i class="fas fa-clock"></i></div>
+                        <div class="stat-info">
+                            <h3 class="stat-value" id="statUptime">99.9%</h3>
+                            <p class="stat-label">وقت التشغيل</p>
+                        </div>
+                        <div class="stat-trend up">+0.1%</div>
+                    </div>
                 </div>
-                <div id="recentBotsContainer" class="bots-list-horizontal"></div>
+
+                <div class="dashboard-grid">
+                    <div class="card glass">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-line"></i> نشاط البوتات</h3>
+                            <select id="chartRange" class="chart-select">
+                                <option value="7">آخر 7 أيام</option>
+                                <option value="30">آخر 30 يوم</option>
+                                <option value="90">آخر 90 يوم</option>
+                            </select>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="activityChart" height="200"></canvas>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-header">
+                            <h3><i class="fas fa-microchip"></i> أداء البوتات</h3>
+                            <i class="fas fa-ellipsis-h"></i>
+                        </div>
+                        <div class="card-body">
+                            <div class="performance-metrics">
+                                <div class="metric">
+                                    <span>متوسط وقت الاستجابة</span>
+                                    <span class="metric-value">42<span class="metric-unit">ms</span></span>
+                                    <div class="progress-bar"><div class="progress" style="width: 42%"></div></div>
+                                </div>
+                                <div class="metric">
+                                    <span>استخدام الذاكرة</span>
+                                    <span class="metric-value">256<span class="metric-unit">MB</span></span>
+                                    <div class="progress-bar"><div class="progress" style="width: 25%"></div></div>
+                                </div>
+                                <div class="metric">
+                                    <span>معدل النجاح</span>
+                                    <span class="metric-value">98.5<span class="metric-unit">%</span></span>
+                                    <div class="progress-bar"><div class="progress" style="width: 98.5%"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card glass">
+                    <div class="card-header">
+                        <h3><i class="fas fa-history"></i> آخر النشاطات</h3>
+                        <a href="#" class="card-link">عرض الكل <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    <div class="card-body">
+                        <div class="activities-list" id="recentActivities">
+                            <div class="activity-skeleton">جاري التحميل...</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- صفحة البوتات -->
-            <div id="botsPage" class="page-content">
-                <div class="page-header">
-                    <div>
-                        <h1>البوتات الخاصة</h1>
-                        <p>إدارة وتشغيل البوتات الخاصة بك</p>
+            <!-- ========== صفحة البوتات ========== -->
+            <div id="botsPage" class="page">
+                <div class="page-actions">
+                    <div class="filter-group">
+                        <select id="filterStatus" class="filter-select">
+                            <option value="all">جميع البوتات</option>
+                            <option value="online">متصل</option>
+                            <option value="offline">غير متصل</option>
+                        </select>
+                        <select id="filterType" class="filter-select">
+                            <option value="all">جميع الأنواع</option>
+                            <option value="afk">مأفك</option>
+                            <option value="hunter">صياد</option>
+                            <option value="coward">جبان</option>
+                        </select>
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="botSearch" placeholder="بحث باسم البوت...">
+                        </div>
                     </div>
-                    <button id="createNewBotBtn" class="btn btn-primary">✨ إنشاء بوت جديد</button>
+                    <button id="createBotFloatBtn" class="btn-float">
+                        <i class="fas fa-plus"></i>
+                        <span>بوت جديد</span>
+                    </button>
                 </div>
                 <div id="botsGrid" class="bots-grid"></div>
             </div>
 
-            <!-- صفحة إنشاء بوت -->
-            <div id="createPage" class="page-content">
-                <div class="page-header">
-                    <div>
-                        <h1>إنشاء بوت جديد</h1>
-                        <p>أدخل المعلومات التالية لإنشاء بوت جديد</p>
+            <!-- ========== صفحة إنشاء بوت ========== -->
+            <div id="createPage" class="page">
+                <div class="create-container">
+                    <div class="create-header">
+                        <div class="create-icon"><i class="fas fa-cogs"></i></div>
+                        <h2>تهيئة بوت جديد</h2>
+                        <p>أدخل معلومات البوت لبدء التشغيل الفوري</p>
                     </div>
-                </div>
-                <div class="form-container">
-                    <form id="createBotForm">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>🤖 اسم البوت</label>
-                                <input type="text" id="createBotName" placeholder="مثال: WarriorBot" required>
+                    <div class="create-form-wrapper glass">
+                        <form id="createBotForm">
+                            <div class="form-row">
+                                <div class="input-group floating">
+                                    <input type="text" id="createBotName" required>
+                                    <label>🤖 اسم البوت</label>
+                                    <span class="input-border"></span>
+                                </div>
+                                <div class="input-group floating">
+                                    <select id="createBotType" required>
+                                        <option value=""></option>
+                                        <option value="afk">😴 مأفك - يدافع عن نفسه</option>
+                                        <option value="hunter">⚔️ صياد - يطارد اللاعبين</option>
+                                        <option value="coward">😨 جبان - ينفصل عند الضربة</option>
+                                    </select>
+                                    <label>🎮 نوع البوت</label>
+                                    <span class="input-border"></span>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>🎮 نوع البوت</label>
-                                <select id="createBotType">
-                                    <option value="afk">مأفك (يقف ويدافع عن نفسه)</option>
-                                    <option value="hunter">صياد (يبحث عن اللاعبين)</option>
-                                    <option value="coward">جبان (يهرب عند الإصابة)</option>
-                                </select>
+                            <div class="form-row">
+                                <div class="input-group floating">
+                                    <input type="text" id="createServerIp" required>
+                                    <label>🌐 عنوان السيرفر</label>
+                                    <span class="input-border"></span>
+                                </div>
+                                <div class="input-group floating">
+                                    <select id="createVersion" required>
+                                        <option value=""></option>
+                                        <option value="1.21.10">1.21.10</option>
+                                        <option value="1.21.9">1.21.9</option>
+                                        <option value="1.21.8">1.21.8</option>
+                                        <option value="1.21.7">1.21.7</option>
+                                        <option value="1.21.6">1.21.6</option>
+                                        <option value="1.21.5">1.21.5</option>
+                                        <option value="1.21.4">1.21.4</option>
+                                        <option value="1.21.3">1.21.3</option>
+                                        <option value="1.21.2">1.21.2</option>
+                                        <option value="1.21.1">1.21.1</option>
+                                        <option value="1.21">1.21</option>
+                                        <option value="1.20.4">1.20.4</option>
+                                        <option value="1.19.4">1.19.4</option>
+                                        <option value="1.18.2">1.18.2</option>
+                                        <option value="1.8.9">1.8.9</option>
+                                    </select>
+                                    <label>🔧 إصدار ماينكرافت</label>
+                                    <span class="input-border"></span>
+                                </div>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>🌐 عنوان السيرفر</label>
-                                <input type="text" id="createServerIp" placeholder="mc.hypixel.net" required>
+                            <div class="input-group floating" id="teamInputGroup" style="display: none;">
+                                <input type="text" id="createTeamNames">
+                                <label>👥 أسماء الأصدقاء (لن يهاجمهم الصياد)</label>
+                                <span class="input-border"></span>
                             </div>
-                            <div class="form-group">
-                                <label>🔧 إصدار ماينكرافت</label>
-                                <select id="createVersion"></select>
+                            <div class="info-banner">
+                                <i class="fas fa-info-circle"></i>
+                                <span>أول بوت مجاني على السحابة. الإصدارات تتغير تلقائياً حسب السيرفر.</span>
                             </div>
-                        </div>
-                        <div class="form-group" id="teamInputGroup" style="display: none;">
-                            <label>👥 أسماء الأصدقاء (لن يهاجمهم الصياد)</label>
-                            <input type="text" id="createTeamNames" placeholder="اسم1,اسم2,اسم3">
-                        </div>
-                        <div class="info-box">
-                            <span>💡</span>
-                            <span>ملاحظة: أول بوت سيكون مجانياً على السحابة. الإصدارات تتغير تلقائياً حسب السيرفر الذي تدخله.</span>
-                        </div>
-                        <button type="submit" class="btn btn-success btn-block">🚀 إنشاء البوت</button>
-                    </form>
+                            <button type="submit" class="btn-submit-glow">
+                                <i class="fas fa-rocket"></i>
+                                <span>إنشاء البوت</span>
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
 
-            <!-- صفحة الإعدادات -->
-            <div id="settingsPage" class="page-content">
-                <div class="page-header">
-                    <div>
-                        <h1>الإعدادات</h1>
-                        <p>معلومات حسابك وإعدادات النظام</p>
+            <!-- ========== صفحة الإحصائيات ========== -->
+            <div id="analyticsPage" class="page">
+                <div class="stats-detailed-grid">
+                    <div class="stat-detailed glass">
+                        <div class="stat-detailed-icon"><i class="fas fa-calendar-alt"></i></div>
+                        <div class="stat-detailed-info">
+                            <div class="stat-detailed-value" id="analyticsDaysActive">0</div>
+                            <div class="stat-detailed-label">أيام النشاط</div>
+                        </div>
+                    </div>
+                    <div class="stat-detailed glass">
+                        <div class="stat-detailed-icon"><i class="fas fa-charging-station"></i></div>
+                        <div class="stat-detailed-info">
+                            <div class="stat-detailed-value" id="analyticsTotalCommands">0</div>
+                            <div class="stat-detailed-label">إجمالي الأوامر</div>
+                        </div>
+                    </div>
+                    <div class="stat-detailed glass">
+                        <div class="stat-detailed-icon"><i class="fas fa-trophy"></i></div>
+                        <div class="stat-detailed-info">
+                            <div class="stat-detailed-value" id="analyticsKills">0</div>
+                            <div class="stat-detailed-label">عدد القتلى</div>
+                        </div>
+                    </div>
+                    <div class="stat-detailed glass">
+                        <div class="stat-detailed-icon"><i class="fas fa-skull"></i></div>
+                        <div class="stat-detailed-info">
+                            <div class="stat-detailed-value" id="analyticsDeaths">0</div>
+                            <div class="stat-detailed-label">عدد الوفيات</div>
+                        </div>
                     </div>
                 </div>
-                <div class="settings-card">
-                    <h3>👤 معلومات الحساب</h3>
-                    <div class="info-row">
-                        <span class="info-label">اسم المستخدم:</span>
-                        <span class="info-value" id="settingsUsername"></span>
+                <div class="card glass">
+                    <div class="card-header">
+                        <h3><i class="fas fa-chart-pie"></i> توزيع البوتات</h3>
                     </div>
-                    <div class="info-row">
-                        <span class="info-label">رقم التعريف (UUID):</span>
-                        <span class="info-value" id="settingsUuid"></span>
+                    <div class="card-body">
+                        <canvas id="distributionChart" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== صفحة الإعدادات ========== -->
+            <div id="settingsPage" class="page">
+                <div class="settings-container">
+                    <div class="settings-section glass">
+                        <div class="settings-section-header">
+                            <i class="fas fa-user-circle"></i>
+                            <h3>معلومات الحساب</h3>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="settings-row">
+                                <span class="settings-label">اسم المستخدم:</span>
+                                <span class="settings-value" id="settingsUsername">-</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="settings-label">UUID:</span>
+                                <span class="settings-value mono" id="settingsUuid">-</span>
+                            </div>
+                            <div class="settings-row">
+                                <span class="settings-label">عضو منذ:</span>
+                                <span class="settings-value" id="settingsMemberSince">اليوم</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section glass">
+                        <div class="settings-section-header">
+                            <i class="fas fa-palette"></i>
+                            <h3>مظهر الواجهة</h3>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="settings-row">
+                                <span class="settings-label">الوضع الليلي</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="darkModeToggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-row">
+                                <span class="settings-label">لون مميز</span>
+                                <div class="color-picker">
+                                    <div class="color-option active" data-color="#7c3aed"></div>
+                                    <div class="color-option" data-color="#ef4444"></div>
+                                    <div class="color-option" data-color="#22c55e"></div>
+                                    <div class="color-option" data-color="#3b82f6"></div>
+                                    <div class="color-option" data-color="#f59e0b"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </main>
-    </div>
 
-    <!-- نافذة تعديل البوت المنبثقة -->
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>✏️ تعديل البوت</h3>
-                <button class="modal-close" onclick="closeEditModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="editBotId">
-                <div class="form-group">
-                    <label>اسم البوت</label>
-                    <input type="text" id="editBotName" class="form-control">
+        <!-- نافذة تعديل البوت -->
+        <div id="editModal" class="modal-glass">
+            <div class="modal-glass-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-pen"></i> تعديل البوت</h3>
+                    <button class="modal-close" onclick="closeEditModal()"><i class="fas fa-times"></i></button>
                 </div>
-                <div class="form-group">
-                    <label>نوع البوت</label>
-                    <select id="editBotType" class="form-control">
-                        <option value="afk">مأفك</option>
-                        <option value="hunter">صياد</option>
-                        <option value="coward">جبان</option>
-                    </select>
+                <div class="modal-body">
+                    <input type="hidden" id="editBotId">
+                    <div class="input-group floating">
+                        <input type="text" id="editBotName">
+                        <label>اسم البوت</label>
+                        <span class="input-border"></span>
+                    </div>
+                    <div class="input-group floating">
+                        <select id="editBotType">
+                            <option value="afk">مأفك</option>
+                            <option value="hunter">صياد</option>
+                            <option value="coward">جبان</option>
+                        </select>
+                        <label>نوع البوت</label>
+                        <span class="input-border"></span>
+                    </div>
+                    <div class="input-group floating">
+                        <input type="text" id="editServerIp">
+                        <label>عنوان السيرفر</label>
+                        <span class="input-border"></span>
+                    </div>
+                    <div class="input-group floating" id="editTeamGroup">
+                        <input type="text" id="editTeamNames">
+                        <label>أسماء الأصدقاء</label>
+                        <span class="input-border"></span>
+                    </div>
+                    <div class="input-group floating">
+                        <select id="editVersion">
+                            <option value="1.21.10">1.21.10</option>
+                            <option value="1.21.9">1.21.9</option>
+                            <option value="1.21.8">1.21.8</option>
+                            <option value="1.20.4">1.20.4</option>
+                            <option value="1.19.4">1.19.4</option>
+                            <option value="1.18.2">1.18.2</option>
+                            <option value="1.8.9">1.8.9</option>
+                        </select>
+                        <label>إصدار ماينكرافت</label>
+                        <span class="input-border"></span>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>عنوان السيرفر</label>
-                    <input type="text" id="editServerIp" class="form-control">
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="closeEditModal()">إلغاء</button>
+                    <button class="btn-primary" onclick="saveEditBot()">حفظ التغييرات</button>
                 </div>
-                <div class="form-group" id="editTeamGroup">
-                    <label>أسماء الأصدقاء</label>
-                    <input type="text" id="editTeamNames" class="form-control" placeholder="اسم1,اسم2">
-                </div>
-                <div class="form-group">
-                    <label>إصدار ماينكرافت</label>
-                    <select id="editVersion" class="form-control"></select>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeEditModal()">إلغاء</button>
-                <button class="btn btn-primary" onclick="saveEditBot()">💾 حفظ التغييرات</button>
             </div>
         </div>
-    </div>
 
-    <!-- نافذة السجلات -->
-    <div id="logsModal" class="modal">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h3>📋 سجلات البوت</h3>
-                <button class="modal-close" onclick="closeLogs()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="logs-control">
-                    <button class="btn btn-sm btn-secondary" onclick="refreshLogs()">🔄 تحديث</button>
-                    <button class="btn btn-sm btn-danger" onclick="clearLogs()">🗑️ مسح</button>
+        <!-- نافذة السجلات -->
+        <div id="logsModal" class="modal-glass">
+            <div class="modal-glass-content modal-large">
+                <div class="modal-header">
+                    <h3><i class="fas fa-terminal"></i> سجلات البوت</h3>
+                    <button class="modal-close" onclick="closeLogs()"><i class="fas fa-times"></i></button>
                 </div>
-                <pre id="logsText" class="logs-pre"></pre>
+                <div class="modal-body">
+                    <div class="logs-toolbar">
+                        <button class="btn-sm" onclick="refreshLogs()"><i class="fas fa-sync-alt"></i> تحديث</button>
+                        <button class="btn-sm btn-danger" onclick="clearLogs()"><i class="fas fa-trash"></i> مسح</button>
+                    </div>
+                    <pre id="logsText" class="logs-pre"></pre>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- نافذة التحكم بالبوت (كاميرا + تحكم كامل) -->
-    <div id="controlModal" class="modal modal-fullscreen">
-        <div class="modal-content-full">
-            <div class="modal-header">
-                <h3 id="controlTitle">🎮 التحكم بالبوت</h3>
-                <button class="modal-close" onclick="closeBotControl()">&times;</button>
-            </div>
-            <div class="control-tabs">
-                <button class="tab-btn active" data-tab="controls">🎮 التحكم</button>
-                <button class="tab-btn" data-tab="inventory">📦 المخزون</button>
-                <button class="tab-btn" data-tab="crafting">🔨 التصنيع</button>
-                <button class="tab-btn" data-tab="info">📊 معلومات</button>
-            </div>
-            <div class="control-body">
-                <!-- تبويب التحكم -->
-                <div id="controlsTab" class="tab-pane active">
-                    <div class="camera-area">
-                        <div class="camera-header">📷 كاميرا المراقبة المباشرة</div>
-                        <iframe id="cameraFrame" class="camera-iframe" src="about:blank"></iframe>
-                    </div>
-                    <div class="stats-area">
-                        <div class="stat-item"><span>❤️ الصحة:</span> <span id="statHealth">--</span></div>
-                        <div class="stat-item"><span>🍗 الجوع:</span> <span id="statFood">--</span></div>
-                        <div class="stat-item"><span>📍 الموقع:</span> <span id="statPosition">--</span></div>
-                        <div class="stat-item"><span>🛡️ الدرع:</span> <span id="statArmor">--</span></div>
-                        <div class="stat-item"><span>⚔️ السلاح:</span> <span id="statWeapon">--</span></div>
-                        <div class="stat-item"><span>📊 المستوى:</span> <span id="statLevel">--</span></div>
-                    </div>
-                    <div class="movement-buttons">
-                        <h4>🎮 الحركة</h4>
-                        <div class="move-grid">
-                            <button class="move-btn" data-cmd="moveForward">⬆️ أمام</button>
-                            <button class="move-btn" data-cmd="moveBack">⬇️ خلف</button>
-                            <button class="move-btn" data-cmd="moveLeft">⬅️ يسار</button>
-                            <button class="move-btn" data-cmd="moveRight">➡️ يمين</button>
-                            <button class="move-btn" data-cmd="jump">🦘 قفز</button>
-                            <button class="move-btn" data-cmd="stopMoving">⏹️ توقف</button>
-                        </div>
-                    </div>
-                    <div class="action-buttons">
-                        <h4>⚔️ القتال والإجراءات</h4>
-                        <div class="action-grid">
-                            <button class="action-btn" data-cmd="attack">🗡️ اهاجم</button>
-                            <button class="action-btn" data-cmd="sneak">🥷 انحناء</button>
-                            <button class="action-btn" data-cmd="unsneak">🧍 وقوف</button>
-                            <button class="action-btn" data-cmd="equipBest">🛡️ البس أفضل درع</button>
-                            <button class="action-btn" data-cmd="equipBestWeapon">⚔️ البس أفضل سلاح</button>
-                        </div>
-                    </div>
-                    <div class="chat-area">
-                        <h4>💬 شات</h4>
-                        <div class="chat-input-group">
-                            <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالة...">
-                            <button class="btn btn-primary" onclick="sendChatMessage()">إرسال</button>
-                        </div>
-                    </div>
+        <!-- نافذة الكاميرا -->
+        <div id="cameraModal" class="modal-glass modal-full">
+            <div class="modal-glass-content-full">
+                <div class="modal-header">
+                    <h3><i class="fas fa-video"></i> كاميرا المراقبة</h3>
+                    <button class="modal-close" onclick="closeCameraModal()"><i class="fas fa-times"></i></button>
                 </div>
-                <!-- تبويب المخزون -->
-                <div id="inventoryTab" class="tab-pane">
-                    <div class="inventory-header">
-                        <h4>المخزون</h4>
-                        <button class="btn btn-sm btn-secondary" onclick="refreshInventory()">🔄 تحديث</button>
-                    </div>
-                    <div class="armor-stats">
-                        <div class="armor-item">🪖 خوذة: <span id="invHelmet">فارغ</span></div>
-                        <div class="armor-item">🦺 صدرية: <span id="invChest">فارغ</span></div>
-                        <div class="armor-item">👖 بنطلون: <span id="invLegs">فارغ</span></div>
-                        <div class="armor-item">👢 حذاء: <span id="invBoots">فارغ</span></div>
-                        <div class="armor-item">⚔️ سلاح: <span id="invWeapon">فارغ</span></div>
-                    </div>
-                    <div class="inventory-grid" id="inventoryGrid"></div>
-                </div>
-                <!-- تبويب التصنيع -->
-                <div id="craftingTab" class="tab-pane">
-                    <div class="crafting-header">
-                        <h4>طاولة التصنيع</h4>
-                    </div>
-                    <div class="crafting-grid" id="craftingGrid"></div>
-                    <div class="crafting-result" id="craftingResult"></div>
-                    <div class="recipes-list">
-                        <h4>الوصفات السريعة</h4>
-                        <div class="recipes-buttons">
-                            <button class="recipe-btn" data-recipe="wooden_pickaxe">⛏️ فأس خشب</button>
-                            <button class="recipe-btn" data-recipe="stone_pickaxe">⛏️ فأس حجر</button>
-                            <button class="recipe-btn" data-recipe="iron_pickaxe">⛏️ فأس حديد</button>
-                            <button class="recipe-btn" data-recipe="diamond_pickaxe">⛏️ فأس ألماس</button>
-                            <button class="recipe-btn" data-recipe="wooden_sword">🗡️ سيف خشب</button>
-                            <button class="recipe-btn" data-recipe="stone_sword">🗡️ سيف حجر</button>
-                            <button class="recipe-btn" data-recipe="iron_sword">🗡️ سيف حديد</button>
-                            <button class="recipe-btn" data-recipe="diamond_sword">🗡️ سيف ألماس</button>
-                        </div>
-                    </div>
-                </div>
-                <!-- تبويب المعلومات -->
-                <div id="infoTab" class="tab-pane">
-                    <div class="info-grid">
-                        <div class="info-card">
-                            <div class="info-title">🏆 الإحصائيات المتقدمة</div>
-                            <div class="info-detail">المستوى: <span id="detailLevel">--</span></div>
-                            <div class="info-detail">الخبرة: <span id="detailXp">--</span></div>
-                            <div class="info-detail">نوع البوت: <span id="detailType">--</span></div>
-                            <div class="info-detail">السيرفر: <span id="detailServer">--</span></div>
-                            <div class="info-detail">الإصدار: <span id="detailVersion">--</span></div>
-                        </div>
-                    </div>
+                <div class="modal-body">
+                    <iframe id="cameraFrame" class="camera-iframe" src="about:blank"></iframe>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- شاشة تسجيل الدخول -->
-    <div id="loginScreen" class="login-screen">
-        <div class="login-card">
-            <div class="login-icon">🎮</div>
-            <h2>BotController</h2>
-            <p>سجل دخول بحساب مايكروسوفت الخاص بماينكرافت</p>
-            <button id="loginButton" class="login-btn">🔑 تسجيل الدخول بحساب مايكروسوفت</button>
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card glass">
+            <div class="login-logo">
+                <div class="login-icon"><i class="fas fa-crown"></i></div>
+                <h2>Bot<span>Craft</span></h2>
+            </div>
+            <p>نظام إدارة بوتات ماينكرافت الاحترافي</p>
+            <button id="loginMainBtn" class="login-btn-glow">
+                <i class="fab fa-microsoft"></i>
+                <span>تسجيل الدخول بحساب مايكروسوفت</span>
+            </button>
+            <div class="login-features">
+                <div><i class="fas fa-check-circle"></i> بوتات ذكية</div>
+                <div><i class="fas fa-check-circle"></i> كاميرا ثلاثية الأبعاد</div>
+                <div><i class="fas fa-check-circle"></i> تحكم عن بُعد</div>
+            </div>
             <small>يتطلب حساباً يملك Minecraft Java Edition</small>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
