@@ -50,4 +50,75 @@ app.post('/api/bot-command', (req, res) => { const { botId, command, extra } = r
 app.post('/api/restart-bot', (req, res) => { const { sessionId, botId } = req.body; const s = sessions.get(sessionId); if (!s) return res.status(401).json({ error: 'Not logged in' }); db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, s.userId], (err, bot) => { stopBot(botId); setTimeout(() => { startBot(botId, s.username, s.userId, bot.server_ip, bot.bot_type, bot.team_names, bot.version); db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]); }, 1000); res.json({ success: true }); }); });
 app.post('/api/clear-logs/:botId', (req, res) => { const fs = require('fs'); const p = path.join(__dirname, 'logs', `bot-${req.params.botId}.log`); if (fs.existsSync(p)) fs.writeFileSync(p, ''); res.json({ success: true }); });
 
+// ========== صفحة الكاميرا المدمجة ==========
+app.get('/camera/:botId', (req, res) => {
+  const botId = req.params.botId;
+  const viewerPort = 3001 + parseInt(botId);
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>كاميرا البوت ${botId}</title>
+        <style>
+            body { margin: 0; padding: 0; background: #0a0a1a; font-family: Arial, sans-serif; }
+            .camera-container { width: 100%; height: 100vh; display: flex; flex-direction: column; }
+            .camera-header { background: #1a1a3a; padding: 10px 20px; color: white; text-align: center; }
+            .camera-frame { flex: 1; border: none; width: 100%; }
+            .error-message { color: white; text-align: center; padding: 50px; background: #0a0a1a; height: 100vh; }
+            .loading { color: #a0a0c0; text-align: center; padding: 50px; }
+            button { background: #7c3aed; border: none; padding: 8px 16px; border-radius: 8px; color: white; cursor: pointer; margin-top: 10px; }
+        </style>
+    </head>
+    <body>
+        <div class="camera-container" id="cameraContainer">
+            <div class="camera-header">
+                🎥 كاميرا البوت - انتظار الاتصال...
+                <button onclick="location.reload()">🔄 إعادة تحميل</button>
+            </div>
+            <div class="loading" id="loadingMsg">⏳ جاري تحميل الكاميرا...<br>قد يستغرق هذا دقيقة</div>
+            <iframe id="cameraFrame" class="camera-frame" style="display:none"></iframe>
+        </div>
+        <script>
+            const botId = ${botId};
+            const viewerPort = ${viewerPort};
+            
+            function checkCamera() {
+                fetch('/api/bot-status/' + botId)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (!data.online) {
+                            document.getElementById('cameraContainer').innerHTML = 
+                                '<div class="error-message">⚠️ البوت غير متصل.<br><br>الرجاء تشغيل البوت أولاً من لوحة التحكم.<br><br><button onclick="window.close()">إغلاق النافذة</button></div>';
+                        } else {
+                            // الكاميرا على السحابة ما تشتغل للأسف
+                            document.getElementById('cameraContainer').innerHTML = 
+                                '<div class="error-message">' +
+                                '📷 الكاميرا لا تعمل على السحابة المجانية.<br><br>' +
+                                'لرؤية الكاميرا، جرب:<br>' +
+                                '1. شغل البوت من جهازك الشخصي<br>' +
+                                '2. أو ارفع خطة مدفوعة على Render (من 7 دولار)<br><br>' +
+                                'لكن البوت نفسه شغال 100%! ✅<br><br>' +
+                                '<button onclick="window.close()">إغلاق النافذة</button>' +
+                                '</div>';
+                        }
+                    })
+                    .catch(() => {
+                        document.getElementById('cameraContainer').innerHTML = 
+                            '<div class="error-message">❌ خطأ في الاتصال بالبوت<br><br><button onclick="location.reload()">إعادة المحاولة</button></div>';
+                    });
+            }
+            
+            setTimeout(checkCamera, 1000);
+        </script>
+    </body>
+    </html>
+  `);
+});
+
+app.get('/api/bot-status/:botId', (req, res) => {
+  const isOnline = botProcesses.has(parseInt(req.params.botId));
+  res.json({ online: isOnline });
+});
+
 app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));

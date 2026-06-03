@@ -287,9 +287,8 @@ function deleteBot(id) {
 }
 
 // ========== كاميرا ==========
-function openCameraViewer(id) {
-    const port = 3001 + parseInt(id);
-    window.open(`http://localhost:${port}`, '_blank', 'width=1200,height=800');
+function openCameraViewer(botId) {
+    window.open(`/camera/${botId}`, '_blank', 'width=900,height=600');
 }
 
 // ========== تعديل بوت ==========
