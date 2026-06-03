@@ -14,6 +14,7 @@ let huntInterval = null;
 let currentTarget = null;
 let teamList = [];
 let botStats = { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', xp: 0, level: 0 };
+let gearCheckInterval = null;
 
 const args = process.argv.slice(2);
 const config = {
@@ -60,10 +61,10 @@ function getInventory() {
 }
 
 function getBestArmorName() {
-  const armorTypes = ['netherite_chestplate', 'diamond_chestplate', 'iron_chestplate', 'golden_chestplate', 'chainmail_chestplate', 'leather_chestplate'];
+  const armorTypes = ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather', 'turtle'];
   for (const type of armorTypes) {
-    const item = bot.inventory.items().find(i => i.name.includes(type));
-    if (item) return item.name.replace('_chestplate', '');
+    const chest = bot.inventory.items().find(i => i.name.includes(`${type}_chestplate`));
+    if (chest) return `${type}_chestplate`;
   }
   return 'لا يوجد';
 }
@@ -71,8 +72,8 @@ function getBestArmorName() {
 function getBestWeaponName() {
   const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword', 'netherite_axe', 'diamond_axe', 'iron_axe'];
   for (const type of weaponTypes) {
-    const item = bot.inventory.items().find(i => i.name.includes(type));
-    if (item) return item.name.replace('_', ' ');
+    const weapon = bot.inventory.items().find(i => i.name.includes(type));
+    if (weapon) return weapon.name.replace('_', ' ');
   }
   return 'لا يوجد';
 }
@@ -100,26 +101,43 @@ function findNearestEntity() {
 function cleanup() {
   if (combatInterval) clearInterval(combatInterval);
   if (huntInterval) clearInterval(huntInterval);
-  combatInterval = huntInterval = null;
+  if (gearCheckInterval) clearInterval(gearCheckInterval);
+  combatInterval = huntInterval = gearCheckInterval = null;
   currentTarget = null;
 }
 
-function equipBestGear() {
-  setTimeout(() => {
-    try {
-      const armor = bot.inventory.items().find(i => i.name.includes('chestplate'));
-      if (armor) bot.equip(armor, 'torso');
-      const helmet = bot.inventory.items().find(i => i.name.includes('helmet'));
-      if (helmet) bot.equip(helmet, 'head');
-      const boots = bot.inventory.items().find(i => i.name.includes('boots'));
-      if (boots) bot.equip(boots, 'feet');
-      const leggings = bot.inventory.items().find(i => i.name.includes('leggings'));
-      if (leggings) bot.equip(leggings, 'legs');
-      const weapon = getBestWeapon();
-      if (weapon) bot.equip(weapon, 'hand');
-      log(`🛡️ تجهيز البوت بأفضل المعدات`);
-    } catch (err) {}
-  }, 1500);
+// ========== لبس أفضل درع كامل ==========
+function equipBestFullGear() {
+  try {
+    const armorSlots = [
+      { type: 'helmet', slot: 'head', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather', 'turtle'] },
+      { type: 'chestplate', slot: 'torso', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'leggings', slot: 'legs', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'boots', slot: 'feet', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] }
+    ];
+    
+    for (const armor of armorSlots) {
+      for (const material of armor.order) {
+        const item = bot.inventory.items().find(i => i.name.includes(`${material}_${armor.type}`));
+        if (item) {
+          bot.equip(item, armor.slot);
+          log(`🛡️ لبس ${material}_${armor.type}`);
+          break;
+        }
+      }
+    }
+    
+    // لبس أفضل سلاح
+    const weapon = getBestWeapon();
+    if (weapon) {
+      bot.equip(weapon, 'hand');
+      log(`⚔️ لبس ${weapon.name}`);
+    }
+    
+    log(`✅ تم تجهيز البوت بأفضل المعدات`);
+  } catch (err) {
+    log(`⚠️ خطأ في تجهيز المعدات: ${err.message}`);
+  }
 }
 
 function autoEat() {
@@ -145,8 +163,8 @@ function followAndAttack(entity, name) {
       bot.attack(entity);
       log(`⚔️ يضرب ${name}!`);
     }
-  }, 600);
-  setTimeout(() => { if (combatInterval) { clearInterval(combatInterval); combatInterval = null; currentTarget = null; bot.pathfinder.setGoal(null); } }, 20000);
+  }, 400); // أسرع (400ms بدل 600)
+  setTimeout(() => { if (combatInterval) { clearInterval(combatInterval); combatInterval = null; currentTarget = null; bot.pathfinder.setGoal(null); } }, 30000);
 }
 
 function attackNearest() {
@@ -169,10 +187,17 @@ function createBot() {
   bot.loadPlugin(pathfinder);
 
   bot.on('login', () => log(`✅ دخل البوت بنجاح`));
+  
   bot.on('spawn', () => {
     log(`📍 ظهر البوت في العالم`);
     try { const mcData = require('minecraft-data')(bot.version); const defaultMove = new Movements(bot, mcData); bot.pathfinder.setMovements(defaultMove); } catch (err) {}
-    equipBestGear();
+    
+    // لبس أفضل معدات فور الظهور
+    setTimeout(() => equipBestFullGear(), 1000);
+    
+    // كل 5 ثواني يتأكد من اللبس (في حال لبس شيء جديد)
+    gearCheckInterval = setInterval(() => equipBestFullGear(), 5000);
+    
     setInterval(updateStats, 1000);
     
     if (!viewerStarted) {
@@ -180,12 +205,12 @@ function createBot() {
     }
     
     if (config.botType === 'afk') {
-      log('😴 وضع المأفك');
+      log('😴 وضع المأفك - يضرب بقوة إذا انضرب');
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
       autoEat();
     } 
     else if (config.botType === 'hunter') {
-      log('⚔️ وضع الصياد');
+      log('⚔️ وضع الصياد - يبحث عن اللاعبين ويضربهم');
       huntInterval = setInterval(() => {
         for (const [name, p] of Object.entries(bot.players)) {
           if (p.entity && p.entity !== bot.entity && !teamList.includes(name.toLowerCase())) {
@@ -194,7 +219,7 @@ function createBot() {
             break;
           }
         }
-      }, 5000);
+      }, 3000);
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
       autoEat();
     }
@@ -212,8 +237,18 @@ function createBot() {
     }
   });
 
+  // كل ما يموت أو يدخل السيرفر مرة ثانية، يلبس المعدات
+  bot.on('death', () => {
+    log('💀 مات البوت');
+    setTimeout(() => equipBestFullGear(), 2000);
+  });
+  
+  bot.on('respawn', () => {
+    log(`🔄 ظهر البوت من جديد`);
+    setTimeout(() => equipBestFullGear(), 1000);
+  });
+
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  bot.on('death', () => log('💀 مات البوت'));
   bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
   bot.on('error', (err) => log(`⚠️ خطأ: ${err.message}`));
 }
