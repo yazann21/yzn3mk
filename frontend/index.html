@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Bot Controller | لوحة تحكم متقدمة</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- الشريط الجانبي -->
+        <aside class="side-nav">
+            <div class="logo-section">
+                <div class="logo-icon">⚔️</div>
+                <div class="logo-text">Bot<span>Control</span></div>
+            </div>
+            <div class="nav-menu">
+                <button class="nav-item active" data-page="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">لوحة التحكم</span>
+                </button>
+                <button class="nav-item" data-page="bots">
+                    <span class="nav-icon">🤖</span>
+                    <span class="nav-text">البوتات الخاصة</span>
+                </button>
+                <button class="nav-item" data-page="create">
+                    <span class="nav-icon">✨</span>
+                    <span class="nav-text">إنشاء بوت</span>
+                </button>
+                <button class="nav-item" data-page="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">الإعدادات</span>
+                </button>
+            </div>
+            <div class="user-profile" id="userProfile" style="display: none;">
+                <div class="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <div class="profile-name" id="profileUsername"></div>
+                    <div class="profile-status">🟢 متصل</div>
+                </div>
+                <button id="logoutButton" class="logout-icon">🚪</button>
+            </div>
+        </aside>
+
+        <!-- المحتوى الرئيسي -->
+        <main class="main-panel">
+            <!-- صفحة لوحة التحكم -->
+            <div id="dashboardPage" class="page-content active">
+                <div class="page-header">
+                    <div>
+                        <h1>لوحة التحكم</h1>
+                        <p>مرحباً بك، <span id="welcomeUsername"></span></p>
+                    </div>
+                </div>
+                <div class="stats-cards">
+                    <div class="stat-card stat-card-purple">
+                        <div class="stat-value" id="statTotalBots">0</div>
+                        <div class="stat-label">إجمالي البوتات</div>
+                        <div class="stat-icon">🤖</div>
+                    </div>
+                    <div class="stat-card stat-card-green">
+                        <div class="stat-value" id="statOnlineBots">0</div>
+                        <div class="stat-label">بوتات متصلة</div>
+                        <div class="stat-icon">🟢</div>
+                    </div>
+                    <div class="stat-card stat-card-blue">
+                        <div class="stat-value" id="statServers">0</div>
+                        <div class="stat-label">سيرفرات نشطة</div>
+                        <div class="stat-icon">🌐</div>
+                    </div>
+                </div>
+                <div class="section-title">
+                    <h3>📋 آخر البوتات</h3>
+                </div>
+                <div id="recentBotsContainer" class="bots-list-horizontal"></div>
+            </div>
+
+            <!-- صفحة البوتات -->
+            <div id="botsPage" class="page-content">
+                <div class="page-header">
+                    <div>
+                        <h1>البوتات الخاصة</h1>
+                        <p>إدارة وتشغيل البوتات الخاصة بك</p>
+                    </div>
+                    <button id="createNewBotBtn" class="btn btn-primary">✨ إنشاء بوت جديد</button>
+                </div>
+                <div id="botsGrid" class="bots-grid"></div>
+            </div>
+
+            <!-- صفحة إنشاء بوت -->
+            <div id="createPage" class="page-content">
+                <div class="page-header">
+                    <div>
+                        <h1>إنشاء بوت جديد</h1>
+                        <p>أدخل المعلومات التالية لإنشاء بوت جديد</p>
+                    </div>
+                </div>
+                <div class="form-container">
+                    <form id="createBotForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>🤖 اسم البوت</label>
+                                <input type="text" id="createBotName" placeholder="مثال: WarriorBot" required>
+                            </div>
+                            <div class="form-group">
+                                <label>🎮 نوع البوت</label>
+                                <select id="createBotType">
+                                    <option value="afk">مأفك (يقف ويدافع عن نفسه)</option>
+                                    <option value="hunter">صياد (يبحث عن اللاعبين)</option>
+                                    <option value="coward">جبان (يهرب عند الإصابة)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>🌐 عنوان السيرفر</label>
+                                <input type="text" id="createServerIp" placeholder="mc.hypixel.net" required>
+                            </div>
+                            <div class="form-group">
+                                <label>🔧 إصدار ماينكرافت</label>
+                                <select id="createVersion"></select>
+                            </div>
+                        </div>
+                        <div class="form-group" id="teamInputGroup" style="display: none;">
+                            <label>👥 أسماء الأصدقاء (لن يهاجمهم الصياد)</label>
+                            <input type="text" id="createTeamNames" placeholder="اسم1,اسم2,اسم3">
+                        </div>
+                        <div class="info-box">
+                            <span>💡</span>
+                            <span>ملاحظة: أول بوت سيكون مجانياً على السحابة. الإصدارات تتغير تلقائياً حسب السيرفر الذي تدخله.</span>
+                        </div>
+                        <button type="submit" class="btn btn-success btn-block">🚀 إنشاء البوت</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- صفحة الإعدادات -->
+            <div id="settingsPage" class="page-content">
+                <div class="page-header">
+                    <div>
+                        <h1>الإعدادات</h1>
+                        <p>معلومات حسابك وإعدادات النظام</p>
+                    </div>
+                </div>
+                <div class="settings-card">
+                    <h3>👤 معلومات الحساب</h3>
+                    <div class="info-row">
+                        <span class="info-label">اسم المستخدم:</span>
+                        <span class="info-value" id="settingsUsername"></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">رقم التعريف (UUID):</span>
+                        <span class="info-value" id="settingsUuid"></span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- نافذة تعديل البوت المنبثقة -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ تعديل البوت</h3>
+                <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editBotId">
+                <div class="form-group">
+                    <label>اسم البوت</label>
+                    <input type="text" id="editBotName" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label>نوع البوت</label>
+                    <select id="editBotType" class="form-control">
+                        <option value="afk">مأفك</option>
+                        <option value="hunter">صياد</option>
+                        <option value="coward">جبان</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>عنوان السيرفر</label>
+                    <input type="text" id="editServerIp" class="form-control">
+                </div>
+                <div class="form-group" id="editTeamGroup">
+                    <label>أسماء الأصدقاء</label>
+                    <input type="text" id="editTeamNames" class="form-control" placeholder="اسم1,اسم2">
+                </div>
+                <div class="form-group">
+                    <label>إصدار ماينكرافت</label>
+                    <select id="editVersion" class="form-control"></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">إلغاء</button>
+                <button class="btn btn-primary" onclick="saveEditBot()">💾 حفظ التغييرات</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة السجلات -->
+    <div id="logsModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>📋 سجلات البوت</h3>
+                <button class="modal-close" onclick="closeLogs()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="logs-control">
+                    <button class="btn btn-sm btn-secondary" onclick="refreshLogs()">🔄 تحديث</button>
+                    <button class="btn btn-sm btn-danger" onclick="clearLogs()">🗑️ مسح</button>
+                </div>
+                <pre id="logsText" class="logs-pre"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة التحكم بالبوت (كاميرا + تحكم كامل) -->
+    <div id="controlModal" class="modal modal-fullscreen">
+        <div class="modal-content-full">
+            <div class="modal-header">
+                <h3 id="controlTitle">🎮 التحكم بالبوت</h3>
+                <button class="modal-close" onclick="closeBotControl()">&times;</button>
+            </div>
+            <div class="control-tabs">
+                <button class="tab-btn active" data-tab="controls">🎮 التحكم</button>
+                <button class="tab-btn" data-tab="inventory">📦 المخزون</button>
+                <button class="tab-btn" data-tab="crafting">🔨 التصنيع</button>
+                <button class="tab-btn" data-tab="info">📊 معلومات</button>
+            </div>
+            <div class="control-body">
+                <!-- تبويب التحكم -->
+                <div id="controlsTab" class="tab-pane active">
+                    <div class="camera-area">
+                        <div class="camera-header">📷 كاميرا المراقبة المباشرة</div>
+                        <iframe id="cameraFrame" class="camera-iframe" src="about:blank"></iframe>
+                    </div>
+                    <div class="stats-area">
+                        <div class="stat-item"><span>❤️ الصحة:</span> <span id="statHealth">--</span></div>
+                        <div class="stat-item"><span>🍗 الجوع:</span> <span id="statFood">--</span></div>
+                        <div class="stat-item"><span>📍 الموقع:</span> <span id="statPosition">--</span></div>
+                        <div class="stat-item"><span>🛡️ الدرع:</span> <span id="statArmor">--</span></div>
+                        <div class="stat-item"><span>⚔️ السلاح:</span> <span id="statWeapon">--</span></div>
+                        <div class="stat-item"><span>📊 المستوى:</span> <span id="statLevel">--</span></div>
+                    </div>
+                    <div class="movement-buttons">
+                        <h4>🎮 الحركة</h4>
+                        <div class="move-grid">
+                            <button class="move-btn" data-cmd="moveForward">⬆️ أمام</button>
+                            <button class="move-btn" data-cmd="moveBack">⬇️ خلف</button>
+                            <button class="move-btn" data-cmd="moveLeft">⬅️ يسار</button>
+                            <button class="move-btn" data-cmd="moveRight">➡️ يمين</button>
+                            <button class="move-btn" data-cmd="jump">🦘 قفز</button>
+                            <button class="move-btn" data-cmd="stopMoving">⏹️ توقف</button>
+                        </div>
+                    </div>
+                    <div class="action-buttons">
+                        <h4>⚔️ القتال والإجراءات</h4>
+                        <div class="action-grid">
+                            <button class="action-btn" data-cmd="attack">🗡️ اهاجم</button>
+                            <button class="action-btn" data-cmd="sneak">🥷 انحناء</button>
+                            <button class="action-btn" data-cmd="unsneak">🧍 وقوف</button>
+                            <button class="action-btn" data-cmd="equipBest">🛡️ البس أفضل درع</button>
+                            <button class="action-btn" data-cmd="equipBestWeapon">⚔️ البس أفضل سلاح</button>
+                        </div>
+                    </div>
+                    <div class="chat-area">
+                        <h4>💬 شات</h4>
+                        <div class="chat-input-group">
+                            <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالة...">
+                            <button class="btn btn-primary" onclick="sendChatMessage()">إرسال</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- تبويب المخزون -->
+                <div id="inventoryTab" class="tab-pane">
+                    <div class="inventory-header">
+                        <h4>المخزون</h4>
+                        <button class="btn btn-sm btn-secondary" onclick="refreshInventory()">🔄 تحديث</button>
+                    </div>
+                    <div class="armor-stats">
+                        <div class="armor-item">🪖 خوذة: <span id="invHelmet">فارغ</span></div>
+                        <div class="armor-item">🦺 صدرية: <span id="invChest">فارغ</span></div>
+                        <div class="armor-item">👖 بنطلون: <span id="invLegs">فارغ</span></div>
+                        <div class="armor-item">👢 حذاء: <span id="invBoots">فارغ</span></div>
+                        <div class="armor-item">⚔️ سلاح: <span id="invWeapon">فارغ</span></div>
+                    </div>
+                    <div class="inventory-grid" id="inventoryGrid"></div>
+                </div>
+                <!-- تبويب التصنيع -->
+                <div id="craftingTab" class="tab-pane">
+                    <div class="crafting-header">
+                        <h4>طاولة التصنيع</h4>
+                    </div>
+                    <div class="crafting-grid" id="craftingGrid"></div>
+                    <div class="crafting-result" id="craftingResult"></div>
+                    <div class="recipes-list">
+                        <h4>الوصفات السريعة</h4>
+                        <div class="recipes-buttons">
+                            <button class="recipe-btn" data-recipe="wooden_pickaxe">⛏️ فأس خشب</button>
+                            <button class="recipe-btn" data-recipe="stone_pickaxe">⛏️ فأس حجر</button>
+                            <button class="recipe-btn" data-recipe="iron_pickaxe">⛏️ فأس حديد</button>
+                            <button class="recipe-btn" data-recipe="diamond_pickaxe">⛏️ فأس ألماس</button>
+                            <button class="recipe-btn" data-recipe="wooden_sword">🗡️ سيف خشب</button>
+                            <button class="recipe-btn" data-recipe="stone_sword">🗡️ سيف حجر</button>
+                            <button class="recipe-btn" data-recipe="iron_sword">🗡️ سيف حديد</button>
+                            <button class="recipe-btn" data-recipe="diamond_sword">🗡️ سيف ألماس</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- تبويب المعلومات -->
+                <div id="infoTab" class="tab-pane">
+                    <div class="info-grid">
+                        <div class="info-card">
+                            <div class="info-title">🏆 الإحصائيات المتقدمة</div>
+                            <div class="info-detail">المستوى: <span id="detailLevel">--</span></div>
+                            <div class="info-detail">الخبرة: <span id="detailXp">--</span></div>
+                            <div class="info-detail">نوع البوت: <span id="detailType">--</span></div>
+                            <div class="info-detail">السيرفر: <span id="detailServer">--</span></div>
+                            <div class="info-detail">الإصدار: <span id="detailVersion">--</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- شاشة تسجيل الدخول -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-card">
+            <div class="login-icon">🎮</div>
+            <h2>BotController</h2>
+            <p>سجل دخول بحساب مايكروسوفت الخاص بماينكرافت</p>
+            <button id="loginButton" class="login-btn">🔑 تسجيل الدخول بحساب مايكروسوفت</button>
+            <small>يتطلب حساباً يملك Minecraft Java Edition</small>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
