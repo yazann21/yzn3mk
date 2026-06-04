@@ -5,8 +5,9 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const { Authflow, Titles } = require('prismarine-auth');  // ⭐ هذا السطر كان مفقوداً
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses, getBotTunnelUrl } = require('./bot-starter');
-const { getAuthUrl, getTokenFromCode, getMinecraftProfile, startMinecraftDeviceAuth } = require('./auth');
+const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -94,7 +95,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
 });
 
 // ========== التحقق من البوت (مصادقة ماينكرافت الحقيقية) ==========
-const pendingBotFlows = new Map(); // تخزين flow لكل بوت أثناء انتظار المصادقة
+const pendingBotFlows = new Map(); // ليس ضرورياً في هذه الطريقة
 
 app.get('/api/bot-verify/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
@@ -118,13 +119,11 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
                 console.log(`🔗 الرابط: ${data.verification_uri}`);
                 console.log(`🔢 الرمز: ${data.user_code}`);
                 console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
-                // تخزين flow لاستخدامه لاحقاً (لا حاجة لأنه متزامن)
             }
         });
-        // الحصول على التوكن (قد ينتظر حتى إدخال المستخدم)
+        // محاولة الحصول على التوكن (قد تنتظر حتى إدخال الرمز)
         const tokenResult = await flow.getMinecraftJavaToken();
         if (tokenResult && tokenResult.token) {
-            // تم التحقق فوراً (ربما كان مخزناً مسبقاً)
             await new Promise((resolve, reject) => {
                 db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
                     if (err) reject(err);
@@ -133,9 +132,8 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             });
             res.json({ message: '✅ تم التحقق من البوت بنجاح!' });
         } else {
-            // لم نحصل على التوكن بعد، المخض يعتمد على onMsaCode
-            // لكن flow.getMinecraftJavaToken() ينتظر حتى إتمام المصادقة، لذا لن يصل هنا
-            res.json({ message: '🔗 انتظر رابط المصادقة في سجل Render، ثم أدخل الرمز' });
+            // إذا لم نحصل على التوكن، نطلب من المستخدم مراجعة السجلات
+            res.json({ message: '🔗 جاري انتظار المصادقة. افتح سجل Render وانسخ الرابط والرمز.' });
         }
     } catch (error) {
         console.error('Error in /api/bot-verify:', error);
@@ -159,7 +157,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ========== باقي مسارات API (إيقاف، حذف، تحديث، سجلات، إحصائيات، أوامر، كاميرا) ==========
+// ========== باقي مسارات API ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
