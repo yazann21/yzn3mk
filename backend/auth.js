@@ -36,28 +36,32 @@ async function getMinecraftProfile(accessToken) {
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
         console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
-
-        let minecraftToken = null;
-        let minecraftUsername = null;
-        try {
-            const flow = new Authflow(`user_${username}`, './ms-cache', {
-                authTitle: Titles.MinecraftJava,
-                deviceType: 'Win32',
-                flow: 'msal'
-            });
-            const tokenResult = await flow.getMinecraftJavaToken({ accessToken });
-            minecraftToken = tokenResult.token;
-            minecraftUsername = tokenResult.profile.name;
-            console.log(`✅ تم ربط حساب ماينكرافت: ${minecraftUsername}`);
-        } catch (err) {
-            console.log(`⚠️ لم يتم العثور على حساب ماينكرافت مرتبط: ${err.message}`);
-        }
-        
-        return { username, minecraftToken, minecraftUsername };
+        return { username };
     } catch (error) {
         console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
         throw error;
     }
 }
 
-module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };
+/**
+ * بدء عملية مصادقة جهاز ماينكرافت (لكل بوت على حدة)
+ * @param {number} botId - معرف البوت
+ * @returns {Promise<{token: string, profile: object}>}
+ */
+async function startBotDeviceAuth(botId) {
+    const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+        authTitle: Titles.MinecraftJava,
+        deviceType: 'Win32',
+        flow: 'msal',
+        onMsaCode: (data) => {
+            console.log(`\n🔐 مصادقة البوت ${botId}:`);
+            console.log(`🔗 الرابط: ${data.verification_uri}`);
+            console.log(`🔢 الرمز: ${data.user_code}`);
+            console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
+        }
+    });
+    const tokenResult = await flow.getMinecraftJavaToken();
+    return tokenResult;
+}
+
+module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile, startBotDeviceAuth };
