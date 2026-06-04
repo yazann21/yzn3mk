@@ -119,18 +119,10 @@ function showApp() {
     if (overlay) overlay.style.display = 'none';
     if (wrapper) wrapper.style.display = 'flex';
     
-    // تعيين القيم مع التحقق من وجود العناصر
-    const sidebarName = document.getElementById('sidebarUsername');
-    if (sidebarName) sidebarName.innerHTML = currentUser.username;
-    
-    const settingsName = document.getElementById('settingsUsername');
-    if (settingsName) settingsName.innerHTML = currentUser.username;
-    
-    const settingsEmail = document.getElementById('settingsEmail');
-    if (settingsEmail) settingsEmail.innerHTML = currentUser.email || '';
-    
-    const welcomeName = document.getElementById('welcomeUsername');
-    if (welcomeName) welcomeName.innerHTML = currentUser.username;
+    if (document.getElementById('sidebarUsername')) document.getElementById('sidebarUsername').innerHTML = currentUser.username;
+    if (document.getElementById('settingsUsername')) document.getElementById('settingsUsername').innerHTML = currentUser.username;
+    if (document.getElementById('settingsEmail')) document.getElementById('settingsEmail').innerHTML = currentUser.email || '';
+    if (document.getElementById('welcomeUsername')) document.getElementById('welcomeUsername').innerHTML = currentUser.username;
 }
 
 function logout() {
@@ -142,113 +134,79 @@ function logout() {
 
 // ---------- أحداث الواجهة ----------
 function initEventListeners() {
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) logoutBtn.addEventListener('click', logout);
+    document.getElementById('logoutBtn')?.addEventListener('click', logout);
     
-    const loginBtn = document.getElementById('loginBtn');
-    if (loginBtn) {
-        loginBtn.addEventListener('click', () => {
-            const email = document.getElementById('loginEmail').value;
-            const password = document.getElementById('loginPassword').value;
-            fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ email, password })
-            }).then(res => res.json()).then(data => {
-                if (data.error) alert(data.error);
-                else { currentUser = data; showApp(); loadDashboard(); loadBots(); }
-            });
+    document.getElementById('loginBtn')?.addEventListener('click', () => {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email, password })
+        }).then(res => res.json()).then(data => {
+            if (data.error) alert(data.error);
+            else { currentUser = data; showApp(); loadDashboard(); loadBots(); }
         });
-    }
+    });
     
-    const registerBtn = document.getElementById('registerBtn');
-    if (registerBtn) {
-        registerBtn.addEventListener('click', () => {
-            const username = document.getElementById('regUsername').value;
-            const email = document.getElementById('regEmail').value;
-            const password = document.getElementById('regPassword').value;
-            const confirm = document.getElementById('regConfirmPassword').value;
-            if (password !== confirm) return alert('كلمة المرور غير متطابقة');
-            fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ username, email, password })
-            }).then(res => res.json()).then(data => {
-                if (data.error) alert(data.error);
-                else { alert('تم إنشاء الحساب بنجاح! قم بتسجيل الدخول'); }
-            });
+    document.getElementById('registerBtn')?.addEventListener('click', () => {
+        const username = document.getElementById('regUsername').value;
+        const email = document.getElementById('regEmail').value;
+        const password = document.getElementById('regPassword').value;
+        const confirm = document.getElementById('regConfirmPassword').value;
+        if (password !== confirm) return alert('كلمة المرور غير متطابقة');
+        fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ username, email, password })
+        }).then(res => res.json()).then(data => {
+            if (data.error) alert(data.error);
+            else { alert('تم إنشاء الحساب بنجاح! قم بتسجيل الدخول'); }
         });
-    }
+    });
     
-    const resetBtn = document.getElementById('resetPasswordBtn');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            const email = document.getElementById('resetEmail').value;
-            if (!email) return alert('أدخل بريدك الإلكتروني');
-            fetch('/api/forgot-password', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-            }).then(res => res.json()).then(data => {
-                alert(data.message || 'تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني');
-            }).catch(() => alert('حدث خطأ، حاول لاحقاً'));
-        });
-    }
+    document.getElementById('resetPasswordBtn')?.addEventListener('click', () => {
+        const email = document.getElementById('resetEmail').value;
+        if (!email) return alert('أدخل بريدك الإلكتروني');
+        fetch('/api/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        }).then(res => res.json()).then(data => {
+            alert(data.message || 'تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني');
+        }).catch(() => alert('حدث خطأ، حاول لاحقاً'));
+    });
     
-    const createType = document.getElementById('createBotType');
-    if (createType) createType.addEventListener('change', () => {});
+    document.getElementById('createBotType')?.addEventListener('change', () => {});
+    document.getElementById('editBotType')?.addEventListener('change', (e) => {
+        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
+    });
+    document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     
-    const editType = document.getElementById('editBotType');
-    if (editType) {
-        editType.addEventListener('change', (e) => {
-            const teamRow = document.getElementById('editTeamGroup');
-            if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
-        });
-    }
-    
-    const serverIp = document.getElementById('createServerIp');
-    if (serverIp) serverIp.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
-    
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(link => {
+    document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             navigateTo(link.dataset.page);
         });
     });
-    
-    const menuToggle = document.getElementById('mobileMenuToggle');
-    if (menuToggle) {
-        menuToggle.addEventListener('click', () => {
-            const sidebar = document.querySelector('.glass-sidebar');
-            if (sidebar) sidebar.classList.toggle('open');
-        });
-    }
-    
-    const createFloat = document.getElementById('createBotFloatBtn');
-    if (createFloat) createFloat.addEventListener('click', () => navigateTo('create'));
-    
-    const filterStatus = document.getElementById('filterStatus');
-    if (filterStatus) filterStatus.addEventListener('change', () => renderBots());
-    const filterType = document.getElementById('filterType');
-    if (filterType) filterType.addEventListener('change', () => renderBots());
-    const botSearch = document.getElementById('botSearch');
-    if (botSearch) botSearch.addEventListener('input', () => renderBots());
-    
-    const darkMode = document.getElementById('darkModeToggle');
-    if (darkMode) {
-        darkMode.addEventListener('change', (e) => {
-            if (!e.target.checked) {
-                document.body.style.background = '#f0f0f0';
-                document.body.style.color = '#1a1a2e';
-            } else {
-                document.body.style.background = 'linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%)';
-                document.body.style.color = '#ffffff';
-            }
-        });
-    }
+    document.getElementById('mobileMenuToggle')?.addEventListener('click', () => {
+        document.querySelector('.glass-sidebar').classList.toggle('open');
+    });
+    document.getElementById('createBotFloatBtn')?.addEventListener('click', () => navigateTo('create'));
+    document.getElementById('filterStatus')?.addEventListener('change', () => renderBots());
+    document.getElementById('filterType')?.addEventListener('change', () => renderBots());
+    document.getElementById('botSearch')?.addEventListener('input', () => renderBots());
+    document.getElementById('darkModeToggle')?.addEventListener('change', (e) => {
+        if (!e.target.checked) {
+            document.body.style.background = '#f0f0f0';
+            document.body.style.color = '#1a1a2e';
+        } else {
+            document.body.style.background = 'linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%)';
+            document.body.style.color = '#ffffff';
+        }
+    });
     
     setInterval(() => {
         if (document.getElementById('dashboardPage')?.classList.contains('active')) loadDashboard();
@@ -257,23 +215,12 @@ function initEventListeners() {
 }
 
 function navigateTo(page) {
-    const pages = ['dashboard', 'bots', 'create', 'analytics', 'settings'];
-    pages.forEach(p => {
-        const el = document.getElementById(`${p}Page`);
-        if (el) el.classList.remove('active');
-    });
-    const activePage = document.getElementById(`${page}Page`);
-    if (activePage) activePage.classList.add('active');
-    
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(link => link.classList.remove('active'));
-    const activeLink = document.querySelector(`.nav-link[data-page="${page}"]`);
-    if (activeLink) activeLink.classList.add('active');
-    
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById(`${page}Page`).classList.add('active');
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+    document.querySelector(`.nav-link[data-page="${page}"]`).classList.add('active');
     const titles = { dashboard: 'لوحة التحكم', bots: 'البوتات الخاصة', create: 'إنشاء بوت', analytics: 'الإحصائيات', settings: 'الإعدادات' };
-    const titleEl = document.getElementById('pageTitle');
-    if (titleEl) titleEl.innerHTML = titles[page] || 'BotCraft';
-    
+    document.getElementById('pageTitle').innerHTML = titles[page] || 'BotCraft';
     if (page === 'dashboard') loadDashboard();
     if (page === 'bots') loadBots();
     if (page === 'analytics') loadAnalytics();
@@ -302,17 +249,13 @@ function showServerWarning(serverName) {
         warning.className = 'info-banner';
         warning.style.background = 'rgba(239,68,68,0.1)';
         warning.style.borderLeftColor = '#ef4444';
-        const container = document.querySelector('#createPage .form-container');
-        if (container) container.appendChild(warning);
+        document.querySelector('#createPage .form-container')?.appendChild(warning);
     }
     if (serverName.includes('hypixel')) warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Hypixel يدعم 1.8.9 فقط';
     else if (serverName.includes('donut')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم 1.21';
 }
 
-function hideServerWarning() {
-    const w = document.getElementById('serverWarning');
-    if (w) w.remove();
-}
+function hideServerWarning() { const w = document.getElementById('serverWarning'); if (w) w.remove(); }
 
 function initCharts() {
     const ctx1 = document.getElementById('activityChart')?.getContext('2d');
@@ -353,22 +296,15 @@ function initColorPicker() {
 function loadDashboard() {
     fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
         const bots = data.bots || [];
-        const totalSpan = document.getElementById('statTotalBots');
-        if (totalSpan) totalSpan.innerHTML = bots.length;
-        const onlineSpan = document.getElementById('statOnlineBots');
-        if (onlineSpan) onlineSpan.innerHTML = bots.filter(b => b.status === 'online').length;
-        const serversSpan = document.getElementById('statServers');
-        if (serversSpan) serversSpan.innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
-        const countNav = document.getElementById('botsCountNav');
-        if (countNav) countNav.innerHTML = bots.length;
+        document.getElementById('statTotalBots').innerHTML = bots.length;
+        document.getElementById('statOnlineBots').innerHTML = bots.filter(b => b.status === 'online').length;
+        document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
+        document.getElementById('botsCountNav').innerHTML = bots.length;
         if (distributionChart) {
             distributionChart.data.datasets[0].data = [bots.filter(b => b.bot_type === 'afk').length, bots.filter(b => b.bot_type === 'hunter').length, bots.filter(b => b.bot_type === 'coward').length];
             distributionChart.update();
         }
-        const recentDiv = document.getElementById('recentActivities');
-        if (recentDiv) {
-            recentDiv.innerHTML = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('') || '<div class="activity-skeleton">لا توجد نشاطات</div>';
-        }
+        document.getElementById('recentActivities').innerHTML = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('') || '<div class="activity-skeleton">لا توجد نشاطات</div>';
     });
 }
 
@@ -536,6 +472,7 @@ document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => 
         else if (btn.dataset.recipe) sendCommand('craft', btn.dataset.recipe);
     });
 });
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const tab = btn.dataset.tab;
@@ -545,20 +482,17 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.getElementById(`${tab}Tab`).classList.add('active');
     });
 });
+
 function loadAnalytics() {
     fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
         const bots = data.bots || [];
-        const daysSpan = document.getElementById('analyticsDaysActive');
-        if (daysSpan) daysSpan.innerHTML = Math.ceil(bots.length * 1.2) || '1';
-        const commandsSpan = document.getElementById('analyticsTotalCommands');
-        if (commandsSpan) commandsSpan.innerHTML = Math.floor(bots.length * 42) || '0';
+        document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1';
+        document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0';
         let totalKills = 0, totalDeaths = 0;
         Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})))).then(statsArray => {
             statsArray.forEach(stat => { totalKills += stat.kills || 0; totalDeaths += stat.deaths || 0; });
-            const killsSpan = document.getElementById('analyticsKills');
-            if (killsSpan) killsSpan.innerHTML = totalKills;
-            const deathsSpan = document.getElementById('analyticsDeaths');
-            if (deathsSpan) deathsSpan.innerHTML = totalDeaths;
+            document.getElementById('analyticsKills').innerHTML = totalKills;
+            document.getElementById('analyticsDeaths').innerHTML = totalDeaths;
         });
     });
 }
@@ -567,7 +501,6 @@ function populateVersions(selectId) { const select = document.getElementById(sel
 populateVersions('createVersion');
 populateVersions('editVersion');
 
-// ربط الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
