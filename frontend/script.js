@@ -1,9 +1,8 @@
 // ========================================
-// BOT CRAFT - PROFESSIONAL SCRIPT v3.0
-// تسجيل الدخول فقط عبر مايكروسوفت
+// BOT CRAFT - PROFESSIONAL SCRIPT v3.1
+// مع دعم الجلسات الدائمة والتحقق من حساب ماينكرافت
 // ========================================
 
-let sessionId = null;
 let currentUser = null;
 let currentBots = [];
 let logsInterval = null;
@@ -39,38 +38,31 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('loadingOverlay').style.display = 'none';
         document.getElementById('appWrapper').style.display = 'flex';
     }, 1000);
-    
     initEventListeners();
     initCharts();
     initColorPicker();
-    loadUserSession();
+    checkAuth();
 });
 
-// ---------- إدارة الجلسة ----------
-function loadUserSession() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionFromUrl = urlParams.get('session');
-    const usernameFromUrl = urlParams.get('username');
-    const uuidFromUrl = urlParams.get('uuid');
-    
-    if (sessionFromUrl && usernameFromUrl && uuidFromUrl) {
-        sessionId = sessionFromUrl;
-        currentUser = { username: decodeURIComponent(usernameFromUrl), uuid: uuidFromUrl };
-        localStorage.setItem('sessionId', sessionId);
-        localStorage.setItem('user', JSON.stringify(currentUser));
-        window.history.replaceState({}, document.title, '/');
-        showApp();
-    } else {
-        const savedSession = localStorage.getItem('sessionId');
-        const savedUser = localStorage.getItem('user');
-        if (savedSession && savedUser) {
-            sessionId = savedSession;
-            currentUser = JSON.parse(savedUser);
-            verifySession();
-        } else {
-            showLogin();
-        }
-    }
+// ---------- التحقق من المصادقة عبر الجلسة ----------
+function checkAuth() {
+    fetch('/api/user')
+        .then(res => {
+            if (res.status === 401) {
+                showLogin();
+            } else {
+                return res.json();
+            }
+        })
+        .then(user => {
+            if (user) {
+                currentUser = user;
+                showApp();
+                loadDashboard();
+                loadBots();
+            }
+        })
+        .catch(() => showLogin());
 }
 
 function showLogin() {
@@ -85,28 +77,25 @@ function showApp() {
     document.getElementById('settingsUsername').innerHTML = currentUser.username;
     document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
     document.getElementById('welcomeUsername').innerHTML = currentUser.username;
-    loadDashboard();
-    loadBots();
-}
-
-function verifySession() {
-    fetch(`/api/user/${sessionId}`)
-        .then(res => {
-            if (res.status === 401) {
-                localStorage.clear();
-                showLogin();
-            } else {
-                showApp();
-            }
-        })
-        .catch(() => showLogin());
+    
+    // عرض حالة حساب ماينكرافت
+    const mcStatus = document.getElementById('mcAccountStatus');
+    if (mcStatus) {
+        if (currentUser.isRealMinecraft) {
+            mcStatus.innerHTML = '✅ حساب ماينكرافت حقيقي';
+            mcStatus.style.color = '#22c55e';
+        } else {
+            mcStatus.innerHTML = '⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت. قد لا تعمل البوتات.';
+            mcStatus.style.color = '#f59e0b';
+        }
+    }
 }
 
 function logout() {
-    localStorage.clear();
-    sessionId = null;
-    currentUser = null;
-    showLogin();
+    fetch('/api/logout', { method: 'POST' }).then(() => {
+        currentUser = null;
+        showLogin();
+    });
 }
 
 // ---------- تهيئة الأحداث ----------
@@ -165,13 +154,10 @@ function initEventListeners() {
 function navigateTo(page) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`${page}Page`).classList.add('active');
-    
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     document.querySelector(`.nav-link[data-page="${page}"]`).classList.add('active');
-    
     const titles = { dashboard: 'لوحة التحكم', bots: 'البوتات الخاصة', create: 'إنشاء بوت', analytics: 'الإحصائيات', settings: 'الإعدادات' };
     document.getElementById('pageTitle').innerHTML = titles[page] || 'BotCraft';
-    
     if (page === 'dashboard') loadDashboard();
     if (page === 'bots') loadBots();
     if (page === 'analytics') loadAnalytics();
@@ -182,7 +168,6 @@ function updateVersionsForServer(serverIp, selectId) {
     const serverLower = serverIp.toLowerCase();
     const versionSelect = document.getElementById(selectId);
     if (!versionSelect) return;
-    
     for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
         if (serverLower.includes(key)) {
             versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion} (مطلوب لهذا السيرفر)</option>`;
@@ -204,17 +189,11 @@ function showServerWarning(serverName) {
         warning.style.borderLeftColor = '#ef4444';
         document.querySelector('#createPage .form-container')?.appendChild(warning);
     }
-    if (serverName.includes('hypixel')) {
-        warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> سيرفر Hypixel يدعم فقط الإصدار 1.8.9 للبوتات';
-    } else if (serverName.includes('donut')) {
-        warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم الإصدارات 1.21, 1.21.1, 1.21.2';
-    }
+    if (serverName.includes('hypixel')) warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> سيرفر Hypixel يدعم فقط الإصدار 1.8.9 للبوتات';
+    else if (serverName.includes('donut')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم الإصدارات 1.21, 1.21.1, 1.21.2';
 }
 
-function hideServerWarning() {
-    const warning = document.getElementById('serverWarning');
-    if (warning) warning.remove();
-}
+function hideServerWarning() { const w = document.getElementById('serverWarning'); if (w) w.remove(); }
 
 function toggleTeamField() {
     const botType = document.getElementById('createBotType').value;
@@ -228,51 +207,16 @@ function initCharts() {
     if (ctx1) {
         activityChart = new Chart(ctx1, {
             type: 'line',
-            data: {
-                labels: ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'],
-                datasets: [{
-                    label: 'نشاط البوتات',
-                    data: [12, 19, 15, 17, 14, 20, 25],
-                    borderColor: globalColor,
-                    backgroundColor: globalColor + '20',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4,
-                    pointBackgroundColor: globalColor,
-                    pointBorderColor: '#fff',
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: '#a0a0c0' } } },
-                scales: {
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0c0' } },
-                    x: { grid: { display: false }, ticks: { color: '#a0a0c0' } }
-                }
-            }
+            data: { labels: ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'], datasets: [{ label: 'نشاط البوتات', data: [12, 19, 15, 17, 14, 20, 25], borderColor: globalColor, backgroundColor: globalColor + '20', borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: globalColor, pointBorderColor: '#fff', pointRadius: 4, pointHoverRadius: 6 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#a0a0c0' } } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0c0' } }, x: { grid: { display: false }, ticks: { color: '#a0a0c0' } } } }
         });
     }
-    
     const ctx2 = document.getElementById('distributionChart')?.getContext('2d');
     if (ctx2) {
         distributionChart = new Chart(ctx2, {
             type: 'doughnut',
-            data: {
-                labels: ['مأفك', 'صياد', 'جبان'],
-                datasets: [{
-                    data: [0, 0, 0],
-                    backgroundColor: ['#a855f7', '#3b82f6', '#f59e0b'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { color: '#a0a0c0' } } }
-            }
+            data: { labels: ['مأفك', 'صياد', 'جبان'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#a855f7', '#3b82f6', '#f59e0b'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0c0' } } } }
         });
     }
 }
@@ -297,7 +241,7 @@ function initColorPicker() {
 
 // ---------- تحميل لوحة التحكم ----------
 function loadDashboard() {
-    fetch(`/api/bots/${sessionId}`)
+    fetch('/api/bots')
         .then(res => res.json())
         .then(data => {
             const bots = data.bots || [];
@@ -305,7 +249,6 @@ function loadDashboard() {
             document.getElementById('statOnlineBots').innerHTML = bots.filter(b => b.status === 'online').length;
             document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
             document.getElementById('botsCountNav').innerHTML = bots.length;
-            
             if (distributionChart) {
                 const afk = bots.filter(b => b.bot_type === 'afk').length;
                 const hunter = bots.filter(b => b.bot_type === 'hunter').length;
@@ -313,25 +256,14 @@ function loadDashboard() {
                 distributionChart.data.datasets[0].data = [afk, hunter, coward];
                 distributionChart.update();
             }
-            
-            const recentHtml = bots.slice(0, 5).map(b => `
-                <div class="activity-item">
-                    <div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}">
-                        <i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i>
-                    </div>
-                    <div class="activity-content">
-                        <div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div>
-                        <div class="activity-time">${new Date(b.created_at).toLocaleString()}</div>
-                    </div>
-                </div>
-            `).join('');
+            const recentHtml = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('');
             document.getElementById('recentActivities').innerHTML = recentHtml || '<div class="activity-skeleton">لا توجد نشاطات</div>';
         });
 }
 
 // ---------- تحميل البوتات ----------
 function loadBots() {
-    fetch(`/api/bots/${sessionId}`)
+    fetch('/api/bots')
         .then(res => res.json())
         .then(data => {
             currentBots = data.bots || [];
@@ -343,35 +275,23 @@ function renderBots() {
     const filterStatus = document.getElementById('filterStatus')?.value || 'all';
     const filterType = document.getElementById('filterType')?.value || 'all';
     const searchTerm = document.getElementById('botSearch')?.value?.toLowerCase() || '';
-    
     let filtered = currentBots;
     if (filterStatus !== 'all') filtered = filtered.filter(b => b.status === filterStatus);
     if (filterType !== 'all') filtered = filtered.filter(b => b.bot_type === filterType);
     if (searchTerm) filtered = filtered.filter(b => b.bot_name.toLowerCase().includes(searchTerm));
-    
     const container = document.getElementById('botsGrid');
     if (!container) return;
     if (filtered.length === 0) {
         container.innerHTML = '<div class="activity-skeleton" style="padding:60px">🤖 لا توجد بوتات تطابق البحث</div>';
         return;
     }
-    
     container.innerHTML = filtered.map(b => `
         <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
-            <div class="bot-header">
-                <div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div>
-                <div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div>
-            </div>
-            <div class="bot-details">
-                <div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div>
-                <div><i class="fas fa-tag"></i> ${getBotTypeText(b.bot_type)}</div>
-                <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
-                <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
-            </div>
+            <div class="bot-header"><div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div><div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div></div>
+            <div class="bot-details"><div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div><div><i class="fas fa-tag"></i> ${getBotTypeText(b.bot_type)}</div><div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div><div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div></div>
             <div class="bot-actions" onclick="event.stopPropagation()">
                 ${b.status === 'online' 
-                    ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button>
-                       <button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
+                    ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
                     : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`
                 }
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
@@ -383,25 +303,33 @@ function renderBots() {
     `).join('');
 }
 
-function getBotTypeText(type) {
-    const types = { 'afk': 'مأفك', 'hunter': 'صياد', 'coward': 'جبان' };
-    return types[type] || type;
-}
+function getBotTypeText(type) { const types = { 'afk': 'مأفك', 'hunter': 'صياد', 'coward': 'جبان' }; return types[type] || type; }
 
 // ---------- عمليات البوت ----------
 function startBot(id) {
+    if (!currentUser.isRealMinecraft) {
+        const confirmStart = confirm('⚠️ تنبيه: حساب مايكروسوفت الخاص بك غير مرتبط بحساب ماينكرافت حقيقي.\n\nقد لا يتمكن البوت من الدخول إلى السيرفرات التي تتطلب مصادقة.\n\nهل تريد المتابعة على مسؤوليتك؟\n\nإذا كنت تريد ربط حساب ماينكرافت حقيقي، سجل الخروج ثم سجل الدخول مرة أخرى.');
+        if (!confirmStart) return;
+    }
     fetch('/api/start-cloud-bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, botId: parseInt(id) })
-    }).then(() => { loadBots(); loadDashboard(); });
+        body: JSON.stringify({ botId: parseInt(id) })
+    }).then(res => res.json()).then(data => {
+        if (data.error === 'need_minecraft_auth') {
+            alert('⚠️ لا يمكن تشغيل البوت لأن حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي.\n\nيرجى تسجيل الخروج ثم تسجيل الدخول مرة أخرى بحساب مايكروسوفت الذي يملك Minecraft Java Edition.');
+            return;
+        }
+        loadBots();
+        loadDashboard();
+    }).catch(err => console.error(err));
 }
 
 function stopBot(id) {
     fetch('/api/stop-bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, botId: parseInt(id) })
+        body: JSON.stringify({ botId: parseInt(id) })
     }).then(() => { loadBots(); loadDashboard(); });
 }
 
@@ -409,7 +337,7 @@ function restartBot(id) {
     fetch('/api/restart-bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, botId: parseInt(id) })
+        body: JSON.stringify({ botId: parseInt(id) })
     }).then(() => { setTimeout(() => { loadBots(); loadDashboard(); }, 2000); });
 }
 
@@ -418,7 +346,7 @@ function deleteBot(id) {
         fetch('/api/delete-bot', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, botId: parseInt(id) })
+            body: JSON.stringify({ botId: parseInt(id) })
         }).then(() => { loadBots(); loadDashboard(); });
     }
 }
@@ -450,7 +378,7 @@ function saveEditBot() {
     fetch('/api/update-bot', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, botId, botName, botType, serverIp, teamNames, version })
+        body: JSON.stringify({ botId, botName, botType, serverIp, teamNames, version })
     }).then(() => { closeEditModal(); loadBots(); });
 }
 
@@ -466,7 +394,7 @@ document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
     fetch('/api/create-bot-cloud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, botName, botType, serverIp, teamNames, version })
+        body: JSON.stringify({ botName, botType, serverIp, teamNames, version })
     }).then(res => res.json()).then(data => {
         if (data.error) alert('خطأ: ' + data.error);
         else { alert('✓ تم إنشاء البوت بنجاح!'); document.getElementById('createBotForm').reset(); navigateTo('bots'); }
@@ -474,9 +402,7 @@ document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
 });
 
 // ---------- كاميرا ----------
-function openCameraViewer(botId) {
-    window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
-}
+function openCameraViewer(botId) { window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800'); }
 function closeCameraModal() { document.getElementById('cameraModal').style.display = 'none'; }
 
 // ---------- السجلات ----------
@@ -484,11 +410,7 @@ function openLogs(id) {
     currentLogsBotId = id;
     document.getElementById('logsModal').style.display = 'flex';
     if (logsInterval) clearInterval(logsInterval);
-    const fetchLogs = () => {
-        fetch(`/api/bot-logs/${id}`).then(res => res.json()).then(data => {
-            document.getElementById('logsText').innerHTML = (data.logs || []).join('\n');
-        });
-    };
+    const fetchLogs = () => { fetch(`/api/bot-logs/${id}`).then(res => res.json()).then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); }); };
     fetchLogs();
     logsInterval = setInterval(fetchLogs, 3000);
 }
@@ -525,10 +447,15 @@ document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => 
 document.querySelectorAll('.tab-btn').forEach(btn => { btn.addEventListener('click', () => { const tab = btn.dataset.tab; document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active')); document.getElementById(`${tab}Tab`).classList.add('active'); }); });
 
 // إحصائيات
-function loadAnalytics() { fetch(`/api/bots/${sessionId}`).then(res => res.json()).then(data => { const bots = data.bots || []; document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1'; document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0'; let totalKills = 0, totalDeaths = 0; Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`).then(r => r.json()).catch(() => ({})))).then(statsArray => { statsArray.forEach(stat => { totalKills += stat.kills || 0; totalDeaths += stat.deaths || 0; }); document.getElementById('analyticsKills').innerHTML = totalKills; document.getElementById('analyticsDeaths').innerHTML = totalDeaths; }); }); }
+function loadAnalytics() { fetch('/api/bots').then(res => res.json()).then(data => { const bots = data.bots || []; document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1'; document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0'; let totalKills = 0, totalDeaths = 0; Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`).then(r => r.json()).catch(() => ({})))).then(statsArray => { statsArray.forEach(stat => { totalKills += stat.kills || 0; totalDeaths += stat.deaths || 0; }); document.getElementById('analyticsKills').innerHTML = totalKills; document.getElementById('analyticsDeaths').innerHTML = totalDeaths; }); }); }
 
 // دوال مساعدة
 function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+// تعبئة قوائم الإصدارات
+function populateVersions(selectId) { const select = document.getElementById(selectId); if (select) select.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join(''); }
+populateVersions('createVersion');
+populateVersions('editVersion');
 
 // تعريف الدوال العامة
 window.closeEditModal = closeEditModal;
@@ -550,9 +477,4 @@ window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
 window.navigateTo = navigateTo;
 
-// تعبئة قائمة الإصدارات
-function populateVersions(selectId) { const select = document.getElementById(selectId); if (select) select.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join(''); }
-populateVersions('createVersion');
-populateVersions('editVersion');
-
-console.log('%c🚀 BotCraft v3.0 - تم التحميل بنجاح!', 'color: #7c3aed; font-size: 16px; font-weight: bold;');
+console.log('%c🚀 BotCraft v3.1 - جلسات دائمة وتحقق من حساب ماينكرافت', 'color: #7c3aed; font-size: 16px; font-weight: bold;');
