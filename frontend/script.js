@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v3.6 - FIX REDIRECT AFTER LOGIN
+// BOT CRAFT v3.7 – إصلاح نهائي للجلسات والانتقال
 // ========================================
 
 let currentUser = null;
@@ -41,39 +41,32 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 });
 
-// ---------- CHECK AUTH WITH FORCED REDIRECT HANDLING ----------
+// ---------- CHECK AUTH (مع معالجة إعادة التوجيه) ----------
 function checkAuth() {
     const urlParams = new URLSearchParams(window.location.search);
-    const loginSuccess = urlParams.has('login=success');
     
-    if (loginSuccess) {
-        // إزالة المعامل من الرابط
+    // إذا كان هناك معامل login=success، فهذا يعني أننا عدنا من المصادقة
+    if (urlParams.has('login') && urlParams.get('login') === 'success') {
+        // مسح المعامل من الرابط دون إعادة تحميل الصفحة
         window.history.replaceState({}, document.title, '/');
-        // إعادة التحقق من حالة المستخدم بعد نصف ثانية
+        // طلب حالة المستخدم بعد نصف ثانية (للتأكد من أن الجلسة خُزنت)
         setTimeout(() => {
-            fetch('/api/user', { credentials: 'include' })
-                .then(res => {
-                    if (!res.ok) throw new Error('Not logged in');
-                    return res.json();
-                })
-                .then(user => {
-                    if (user && user.username) {
-                        currentUser = user;
-                        showApp();
-                        loadDashboard();
-                        loadBots();
-                    } else {
-                        showLogin();
-                    }
-                })
-                .catch(() => showLogin());
+            fetchUserAndShowApp();
         }, 500);
         return;
     }
     
+    // التحقق العادي من الجلسة
+    fetchUserAndShowApp();
+}
+
+function fetchUserAndShowApp() {
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
-            if (!res.ok) throw new Error('Not logged in');
+            if (res.status === 401) {
+                showLogin();
+                return null;
+            }
             return res.json();
         })
         .then(user => {
@@ -82,11 +75,14 @@ function checkAuth() {
                 showApp();
                 loadDashboard();
                 loadBots();
-            } else {
+            } else if (!user) {
                 showLogin();
             }
         })
-        .catch(() => showLogin());
+        .catch(err => {
+            console.error('fetchUser error:', err);
+            showLogin();
+        });
 }
 
 function showLogin() {
@@ -115,6 +111,7 @@ function logout() {
     });
 }
 
+// ---------- باقي الدوال (نفس النسخة السابقة مع credentials) ----------
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
     document.getElementById('loginMicrosoftBtn')?.addEventListener('click', () => {
