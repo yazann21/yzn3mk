@@ -1,18 +1,34 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const ngrok = require('ngrok');
 
 const botProcesses = new Map();
 const botLogs = new Map();
 const botStats = new Map();
 const botInventory = new Map();
+const botTunnels = new Map(); // تخزين روابط ngrok لكل بوت
 
-// المنفذ الأساسي للكاميرا
 const VIEWER_BASE_PORT = 8080;
+
+// دالة لبدء نفق ngrok لمنفذ الكاميرا
+async function startNgrokForBot(botId, port) {
+    try {
+        const url = await ngrok.connect({
+            addr: port,
+            authtoken: process.env.NGROK_AUTH_TOKEN || null
+        });
+        botTunnels.set(botId, url);
+        console.log(`🌐 كاميرا البوت ${botId} متاحة على: ${url}`);
+        return url;
+    } catch (err) {
+        console.error(`❌ فشل تشغيل ngrok للبوت ${botId}:`, err.message);
+        return null;
+    }
+}
 
 function startBot(botId, botName, mcToken, serverIp, botType, teamNames = '', version = '1.21.10') {
     const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
 
-    // نمرر التوكن مباشرة إلى البوت
     const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botName, mcToken, serverIp, botType, botId, teamNames, version], {
         env: {
             ...process.env,
@@ -50,8 +66,13 @@ function startBot(botId, botName, mcToken, serverIp, botType, teamNames = '', ve
     });
 
     botProcesses.set(botId, botProcess);
-    console.log(`✅ Bot ${botId} (${botName}) started with camera on port ${viewerPort}`);
+    
+    // بدء نفق ngrok للكاميرا بعد ثانية من تشغيل البوت
+    setTimeout(() => {
+        startNgrokForBot(botId, viewerPort);
+    }, 2000);
 
+    console.log(`✅ Bot ${botId} (${botName}) started with camera on port ${viewerPort}`);
     return { process: botProcess, logs };
 }
 
@@ -60,9 +81,14 @@ function stopBot(botId) {
     if (p) {
         p.kill();
         botProcesses.delete(botId);
-        return true;
     }
-    return false;
+    // إغلاق نفق ngrok الخاص بالبوت
+    const tunnelUrl = botTunnels.get(botId);
+    if (tunnelUrl) {
+        ngrok.disconnect(tunnelUrl).catch(console.error);
+        botTunnels.delete(botId);
+    }
+    return true;
 }
 
 function getBotLogs(botId) {
@@ -106,6 +132,10 @@ function sendCommand(botId, command, extra = null) {
     if (p) p.send({ type: 'command', command, extra });
 }
 
+function getBotTunnelUrl(botId) {
+    return botTunnels.get(botId);
+}
+
 module.exports = {
     startBot,
     stopBot,
@@ -114,5 +144,6 @@ module.exports = {
     getBotInventory,
     sendCommand,
     deleteBot,
-    botProcesses
+    botProcesses,
+    getBotTunnelUrl
 };

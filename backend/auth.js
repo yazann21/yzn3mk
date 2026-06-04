@@ -1,4 +1,5 @@
-const { ConfidentialClientApplication } = require('@azure/msal-node');
+\const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { Authflow, Titles } = require('prismarine-auth');
 const axios = require('axios');
 
 const msalConfig = {
@@ -29,17 +30,15 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
     try {
-        // جلب اسم المستخدم من مايكروسوفت غراف API
         const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
-
         console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
-        return { username, uuid: username }; // نمرر اسم المستخدم فقط
+        return { username };
     } catch (error) {
-        console.error('❌ فشل الحصول على البيانات:', error.message);
+        console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
         throw error;
     }
 }

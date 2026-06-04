@@ -5,9 +5,9 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const { Authflow } = require('prismarine-auth');
-const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
-const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { Authflow, Titles } = require('prismarine-auth');
+const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses, getBotTunnelUrl } = require('./bot-starter');
+const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,54 +41,22 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== مسار تسجيل الدخول (للمستخدم) ==========
+// ========== تسجيل الدخول العادي للمستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
-        const msalConfig = {
-            auth: {
-                clientId: process.env.CLIENT_ID,
-                authority: 'https://login.microsoftonline.com/consumers',
-                clientSecret: process.env.CLIENT_SECRET,
-            }
-        };
-        const msalClient = new ConfidentialClientApplication(msalConfig);
-        const authUrlParams = {
-            scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
-            redirectUri: process.env.REDIRECT_URI,  // الآن هو /auth/callback
-        };
-        const url = await msalClient.getAuthCodeUrl(authUrlParams);
+        const url = await getAuthUrl();
         res.json({ url });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// ========== مسار العودة من مايكروسوفت (للمستخدم) ==========
 app.get('/auth/callback', async (req, res) => {
     const { code } = req.query;
     if (!code) return res.status(400).send('No code');
     try {
-        const msalConfig = {
-            auth: {
-                clientId: process.env.CLIENT_ID,
-                authority: 'https://login.microsoftonline.com/consumers',
-                clientSecret: process.env.CLIENT_SECRET,
-            }
-        };
-        const msalClient = new ConfidentialClientApplication(msalConfig);
-        const tokenRequest = {
-            code: code,
-            scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
-            redirectUri: process.env.REDIRECT_URI,
-        };
-        const response = await msalClient.acquireTokenByCode(tokenRequest);
-        const accessToken = response.accessToken;
-        const axios = require('axios');
-        const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
-            headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        const email = graphResponse.data.userPrincipalName;
-        const username = graphResponse.data.displayName || email.split('@')[0];
+        const { accessToken } = await getTokenFromCode(code);
+        const { username } = await getMinecraftProfile(accessToken);
         db.run(`INSERT OR IGNORE INTO users (username) VALUES (?)`, [username]);
         db.get(`SELECT id FROM users WHERE username = ?`, [username], (err, row) => {
             if (err) return res.status(500).send('Database error');
@@ -101,11 +69,60 @@ app.get('/auth/callback', async (req, res) => {
     }
 });
 
-// ========== مسار عودة البوت (منفصل تماماً) ==========
+// ========== مصادقة البوت (طريقة الجهاز) ==========
+const botFlows = new Map();
+
+app.get('/api/bot-verify/:botId', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const botId = parseInt(req.params.botId);
+    try {
+        const bot = await new Promise((resolve, reject) => {
+            db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+        if (!bot) return res.status(404).json({ error: 'Bot not found' });
+
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            authTitle: Titles.MinecraftJava,
+            deviceType: 'Win32',
+            flow: 'msal',
+            onMsaCode: (data) => {
+                console.log('\n========== رابط التحقق للبوت ==========');
+                console.log(`🔗 الرابط: ${data.verification_uri}`);
+                console.log(`🔢 الكود: ${data.user_code}`);
+                console.log(`🆔 معرف البوت: ${botId}`);
+                console.log('========================================\n');
+                botFlows.set(botId, flow);
+            }
+        });
+        const token = await flow.getMinecraftJavaToken();
+        if (token && token.token) {
+            await new Promise((resolve, reject) => {
+                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [token.token, botId], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            botFlows.delete(botId);
+            res.json({ message: '✅ تم التحقق من البوت بنجاح!' });
+        } else {
+            res.json({ message: '🔗 تم إرسال رابط التحقق. افتح سجلات Render وانسخ الرابط.' });
+        }
+    } catch (error) {
+        console.error('Error in /api/bot-verify:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
+        }
+    }
+});
+
+// مسار العودة من مايكروسوفت لمصادقة البوت
 app.get('/auth/bot-callback', async (req, res) => {
     const { code } = req.query;
     if (!code) return res.status(400).send('No code provided');
-    console.log('📥 Bot callback received with code:', code);
+    console.log('📥 Bot callback received with code');
     let botId = null;
     let flow = null;
     for (let [id, f] of botFlows.entries()) {
@@ -115,7 +132,6 @@ app.get('/auth/bot-callback', async (req, res) => {
         break;
     }
     if (!flow) {
-        console.log('⚠️ No pending bot flow found');
         return res.send(`
             <html><body style="background:#0a0a1a;color:white;text-align:center;padding:50px;font-family:sans-serif;">
             <h2>⚠️ لم يتم العثور على بوت ينتظر التحقق</h2>
@@ -151,53 +167,7 @@ app.get('/auth/bot-callback', async (req, res) => {
     }
 });
 
-// ========== التحقق من البوت (ينشئ رابطاً فريداً) ==========
-const botFlows = new Map();
-
-app.get('/api/bot-verify/:botId', async (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const botId = parseInt(req.params.botId);
-    try {
-        const bot = await new Promise((resolve, reject) => {
-            db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
-            });
-        });
-        if (!bot) return res.status(404).json({ error: 'Bot not found' });
-        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
-            authTitle: 'Minecraft',
-            deviceType: 'Win32',
-            flow: 'msal',
-            redirectUri: process.env.BOT_REDIRECT_URI || 'https://yzn3mk.onrender.com/auth/bot-callback',
-            onMsaCode: (data) => {
-                console.log('\n========== رابط التحقق للبوت ==========');
-                console.log(`🔗 الرابط: ${data.verification_uri}`);
-                console.log(`🔢 الكود: ${data.user_code}`);
-                console.log(`🆔 معرف البوت: ${botId}`);
-                console.log('========================================\n');
-                botFlows.set(botId, flow);
-            }
-        });
-        const token = await flow.getMinecraftJavaToken();
-        if (token && token.token) {
-            await new Promise((resolve, reject) => {
-                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [token.token, botId], (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
-            res.json({ message: '✅ البوت موثق بالفعل!' });
-        } else {
-            res.json({ message: '🔗 تم إرسال رابط التحقق. افتح سجلات Render وانسخ الرابط.' });
-        }
-    } catch (error) {
-        console.error('Error in /api/bot-verify:', error);
-        res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق' });
-    }
-});
-
-// ========== باقي مسارات API (كما هي) ==========
+// ========== باقي مسارات API ==========
 app.get('/api/user', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     res.json({ username: req.session.username });
@@ -229,7 +199,9 @@ app.post('/api/start-cloud-bot', (req, res) => {
     const { botId } = req.body;
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
-        if (!bot.mc_token) return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً' });
+        if (!bot.mc_token) {
+            return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً' });
+        }
         if (botProcesses.has(botId)) return res.json({ success: true });
         startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
@@ -307,10 +279,21 @@ app.get('/api/tasks/:botId', (req, res) => {
     });
 });
 
+// ========== مسار الكاميرا المعدل (يدعم ngrok) ==========
 app.get('/camera/:botId', (req, res) => {
     const botId = parseInt(req.params.botId);
-    const viewerPort = 8080 + botId;
-    res.redirect(`http://localhost:${viewerPort}`);
+    const tunnelUrl = getBotTunnelUrl(botId);
+    if (tunnelUrl) {
+        res.redirect(tunnelUrl);
+    } else {
+        res.send(`
+            <html><body style="background:#0a0a1a;color:white;text-align:center;padding:50px;">
+            <h2>⏳ جاري إعداد الكاميرا...</h2>
+            <p>قد يستغرق ngrok بضع ثوانٍ. حاول مرة أخرى بعد لحظات.</p>
+            <button onclick="location.reload()">تحديث</button>
+            </body></html>
+        `);
+    }
 });
 
 const server = app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

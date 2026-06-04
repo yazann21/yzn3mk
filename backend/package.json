@@ -24,5 +24,8 @@
     "prismarine-viewer": "^1.33.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "ngrok": "^5.0.0-beta.2"
   }
 }
