@@ -1,28 +1,26 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
-const { Authflow } = require('prismarine-auth');
-const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
-const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
-const SQLiteStore = require('connect-sqlite3')(session);
 const sqlite3 = require('sqlite3').verbose();
-const fs = require('fs');
+const { Authflow } = require('prismarine-auth');
+const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// إعدادات أساسية
+// إعدادات أساسية للإنتاج
 app.set('trust proxy', 1);
 app.use(cors({
-    origin: 'https://yzn3mk.onrender.com', // رابط موقعك
+    origin: 'https://yzn3mk.onrender.com',
     credentials: true
 }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// إعدادات الجلسة
+// إعدادات الجلسة (Session)
 app.use(session({
     store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
     secret: process.env.SESSION_SECRET || 'super_secret_key_change_this',
@@ -42,10 +40,23 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// مسارات المصادقة
+// ========== مصادقة مايكروسوفت ==========
 app.get('/auth/login', async (req, res) => {
     try {
-        const url = await getAuthUrl();
+        const { ConfidentialClientApplication } = require('@azure/msal-node');
+        const msalConfig = {
+            auth: {
+                clientId: process.env.CLIENT_ID,
+                authority: 'https://login.microsoftonline.com/consumers',
+                clientSecret: process.env.CLIENT_SECRET,
+            }
+        };
+        const msalClient = new ConfidentialClientApplication(msalConfig);
+        const authUrlParams = {
+            scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
+            redirectUri: process.env.REDIRECT_URI,
+        };
+        const url = await msalClient.getAuthCodeUrl(authUrlParams);
         res.json({ url });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -56,9 +67,31 @@ app.get('/auth/callback', async (req, res) => {
     const { code } = req.query;
     if (!code) return res.status(400).send('No code');
     try {
-        const { accessToken } = await getTokenFromCode(code);
-        const { username, uuid } = await getMinecraftProfile(accessToken);
-        
+        const { ConfidentialClientApplication } = require('@azure/msal-node');
+        const msalConfig = {
+            auth: {
+                clientId: process.env.CLIENT_ID,
+                authority: 'https://login.microsoftonline.com/consumers',
+                clientSecret: process.env.CLIENT_SECRET,
+            }
+        };
+        const msalClient = new ConfidentialClientApplication(msalConfig);
+        const tokenRequest = {
+            code: code,
+            scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
+            redirectUri: process.env.REDIRECT_URI,
+        };
+        const response = await msalClient.acquireTokenByCode(tokenRequest);
+        const accessToken = response.accessToken;
+
+        // الحصول على معلومات المستخدم من Graph API
+        const axios = require('axios');
+        const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        const email = graphResponse.data.userPrincipalName;
+        const username = graphResponse.data.displayName || email.split('@')[0];
+
         db.run(`INSERT OR IGNORE INTO users (username) VALUES (?)`, [username]);
         db.get(`SELECT id FROM users WHERE username = ?`, [username], (err, row) => {
             if (err) return res.status(500).send('Database error');
@@ -80,7 +113,7 @@ app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
-// إدارة البوتات
+// ========== إدارة البوتات ==========
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -98,8 +131,9 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// التحقق من حساب البوت (المصادقة عبر الجهاز)
+// ========== التحقق من البوت (مصادفة عبر الجهاز) ==========
 const botFlows = new Map();
+
 app.get('/api/bot-verify/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const botId = parseInt(req.params.botId);
@@ -111,22 +145,23 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             });
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
-        
-        // إنشاء كائن Authflow مع تحديد callback للتعامل مع رابط المصادقة
+
+        // إنشاء كائن Authflow مع وضع onMsaCode لطباعة الرابط
         const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
             authTitle: 'Minecraft',
             deviceType: 'Win32',
             flow: 'msal',
             onMsaCode: (data) => {
-                console.log(`\n\n========== رابط المصادقة للبوت ${botId} ==========`);
+                console.log('\n========== رابط التحقق للبوت ==========');
                 console.log(`🔗 الرابط: ${data.verification_uri}`);
-                console.log(`📋 الكود: ${data.user_code}`);
-                console.log(`===================================================\n`);
-                // تخزين الـ flow لاستخدامه لاحقاً
+                console.log(`🔢 الكود: ${data.user_code}`);
+                console.log(`🆔 معرف البوت: ${botId}`);
+                console.log('========================================\n');
+                // حفظ الـ flow لاستخدامه في الـ callback
                 botFlows.set(botId, flow);
             }
         });
-        // بدء عملية المصادقة
+        // بدء عملية المصادقة (سيتم طباعة الرابط في الـ Logs)
         const token = await flow.getMinecraftJavaToken();
         if (token && token.token) {
             await new Promise((resolve, reject) => {
@@ -135,9 +170,9 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
                     else resolve();
                 });
             });
-            res.json({ message: 'تم التحقق من البوت بنجاح!' });
+            res.json({ message: '✅ تم التحقق من البوت بنجاح!' });
         } else {
-            res.json({ message: 'جاري انتظار إتمام المصادقة... سيظهر الرابط في سجل الخادم (Logs).' });
+            res.json({ message: '🔗 تم إرسال رابط التحقق. افتح السجلات (Logs) في Render وانسخ الرابط.' });
         }
     } catch (error) {
         console.error('Error in /api/bot-verify:', error);
@@ -145,15 +180,61 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
     }
 });
 
-// تشغيل البوت
+// ⭐ المسار الجديد الذي كان مفقوداً (يستقبل العودة من مايكروسوفت)
+app.get('/auth/bot-callback', (req, res) => {
+    const { code, state } = req.query;
+    if (!code) return res.status(400).send('No code provided');
+    console.log('✅ Bot callback received with code:', code);
+    // نبحث عن أي بوت ينتظر المصادقة (نستخدم آخر flow تم تخزينه)
+    let botId = null;
+    let flow = null;
+    for (let [id, f] of botFlows.entries()) {
+        flow = f;
+        botId = id;
+        botFlows.delete(id);
+        break;
+    }
+    if (!flow) {
+        return res.send(`
+            <html><body style="background:#0a0a1a;color:white;text-align:center;padding:50px;">
+            <h2>⚠️ لم يتم العثور على بوت ينتظر التحقق</h2>
+            <p>يمكنك إغلاق هذه النافذة والمحاولة مرة أخرى من الموقع.</p>
+            </body></html>
+        `);
+    }
+    // إكمال عملية المصادقة
+    flow.authFlow(code).then(() => {
+        return flow.getMinecraftJavaToken();
+    }).then(token => {
+        if (token && token.token) {
+            return new Promise((resolve, reject) => {
+                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [token.token, botId], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        }
+    }).then(() => {
+        res.send(`
+            <html><body style="background:#0a0a1a;color:white;text-align:center;padding:50px;">
+            <h2>✅ تم التحقق من البوت بنجاح!</h2>
+            <p>يمكنك إغلاق هذه النافذة والعودة إلى الموقع لتشغيل البوت.</p>
+            <script>setTimeout(() => window.close(), 3000);</script>
+            </body></html>
+        `);
+    }).catch(err => {
+        console.error('Bot callback error:', err);
+        res.status(500).send('فشل التحقق: ' + err.message);
+    });
+});
+
+// ========== تشغيل وإيقاف البوتات ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
-        if (!bot.mc_token) {
-            return res.status(400).json({ error: 'need_minecraft_auth', message: 'يرجى الضغط على زر تحقق أولاً' });
-        }
+        if (!bot.mc_token) return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً' });
         if (botProcesses.has(botId)) return res.json({ success: true });
         startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
@@ -161,19 +242,83 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// باقي المسارات (إيقاف، حذف، تحديث، سجلات، كاميرا...) كما هي
-app.post('/api/stop-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; if (stopBot(botId)) db.run('UPDATE bots SET status = ? WHERE id = ?', ['stopped', botId]); res.json({ success: true }); });
-app.delete('/api/delete-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; stopBot(botId); deleteBot(botId); db.run('DELETE FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId]); res.json({ success: true }); });
-app.put('/api/update-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId, botName, botType, serverIp, teamNames, version } = req.body; stopBot(botId); db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ?, status = 'stopped' WHERE id = ? AND user_id = ?`, [botName, botType, serverIp, teamNames || '', version || '1.21.10', botId, req.session.userId]); res.json({ success: true }); });
-app.get('/api/bot-logs/:botId', (req, res) => { res.json({ logs: getBotLogs(parseInt(req.params.botId)) }); });
-app.get('/api/bot-stats/:botId', (req, res) => { res.json(getBotStats(parseInt(req.params.botId))); });
-app.get('/api/bot-inventory/:botId', (req, res) => { res.json(getBotInventory(parseInt(req.params.botId))); });
-app.post('/api/bot-command', (req, res) => { const { botId, command, extra } = req.body; sendCommand(botId, command, extra); res.json({ success: true }); });
-app.post('/api/restart-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => { if (err || !bot) return; stopBot(botId); setTimeout(() => { startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version); db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]); }, 1000); res.json({ success: true }); }); });
-app.post('/api/clear-logs/:botId', (req, res) => { const p = path.join(__dirname, 'logs', `bot-${req.params.botId}.log`); if (fs.existsSync(p)) fs.writeFileSync(p, ''); res.json({ success: true }); });
-app.get('/api/tasks/:botId', (req, res) => { db.all('SELECT * FROM tasks WHERE bot_id = ?', [req.params.botId], (err, tasks) => { res.json({ tasks: tasks || [] }); }); });
-app.get('/camera/:botId', (req, res) => { const botId = parseInt(req.params.botId); const viewerPort = 8080 + botId; res.redirect(`http://localhost:${viewerPort}`); });
+app.post('/api/stop-bot', (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const { botId } = req.body;
+    if (stopBot(botId)) db.run('UPDATE bots SET status = ? WHERE id = ?', ['stopped', botId]);
+    res.json({ success: true });
+});
 
+app.delete('/api/delete-bot', (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const { botId } = req.body;
+    stopBot(botId);
+    deleteBot(botId);
+    db.run('DELETE FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId]);
+    res.json({ success: true });
+});
+
+app.put('/api/update-bot', (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const { botId, botName, botType, serverIp, teamNames, version } = req.body;
+    stopBot(botId);
+    db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ?, status = 'stopped' WHERE id = ? AND user_id = ?`,
+        [botName, botType, serverIp, teamNames || '', version || '1.21.10', botId, req.session.userId]);
+    res.json({ success: true });
+});
+
+app.get('/api/bot-logs/:botId', (req, res) => {
+    res.json({ logs: getBotLogs(parseInt(req.params.botId)) });
+});
+
+app.get('/api/bot-stats/:botId', (req, res) => {
+    res.json(getBotStats(parseInt(req.params.botId)));
+});
+
+app.get('/api/bot-inventory/:botId', (req, res) => {
+    res.json(getBotInventory(parseInt(req.params.botId)));
+});
+
+app.post('/api/bot-command', (req, res) => {
+    const { botId, command, extra } = req.body;
+    sendCommand(botId, command, extra);
+    res.json({ success: true });
+});
+
+app.post('/api/restart-bot', (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const { botId } = req.body;
+    db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
+        if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
+        stopBot(botId);
+        setTimeout(() => {
+            startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+        }, 1000);
+        res.json({ success: true });
+    });
+});
+
+app.post('/api/clear-logs/:botId', (req, res) => {
+    const fs = require('fs');
+    const p = path.join(__dirname, 'logs', `bot-${req.params.botId}.log`);
+    if (fs.existsSync(p)) fs.writeFileSync(p, '');
+    res.json({ success: true });
+});
+
+app.get('/api/tasks/:botId', (req, res) => {
+    db.all('SELECT * FROM tasks WHERE bot_id = ?', [req.params.botId], (err, tasks) => {
+        res.json({ tasks: tasks || [] });
+    });
+});
+
+app.get('/camera/:botId', (req, res) => {
+    const botId = parseInt(req.params.botId);
+    const viewerPort = 8080 + botId;
+    res.redirect(`http://localhost:${viewerPort}`);
+});
+
+// بدء الخادم
 const server = app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
-process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
-process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
+process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
