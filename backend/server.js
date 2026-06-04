@@ -6,7 +6,6 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const { Authflow } = require('prismarine-auth');
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 
@@ -58,24 +57,17 @@ app.get('/auth/callback', async (req, res) => {
     }
 
     try {
-        // استخدام Authflow لاستكمال المصادقة والحصول على التوكن
-        const flow = new Authflow('botcraft_user', './ms-cache', {
-            authTitle: 'Minecraft',
-            deviceType: 'Win32',
-            flow: 'msal',
-            redirectUri: process.env.REDIRECT_URI
-        });
-        
-        // استكمال المصادقة باستخدام الكود
-        await flow.authFlow(code);
-        const minecraftToken = await flow.getMinecraftJavaToken();
-        const uuid = minecraftToken.profile.id;
-        const username = minecraftToken.profile.name;
+        // 1. الحصول على Access Token من مايكروسوفت
+        const { accessToken } = await getTokenFromCode(code);
+        // 2. الحصول على بيانات ماينكرافت الحقيقية
+        const profile = await getMinecraftProfile(accessToken);
+
+        const { uuid, username, minecraftToken, isRealMinecraft } = profile;
 
         // حفظ المستخدم في قاعدة البيانات
         db.run(`INSERT INTO users (microsoft_id, username, uuid, minecraft_token, is_real) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
-            [uuid, username, uuid, minecraftToken.token, 1], (err) => {
+            [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0], (err) => {
                 if (err) {
                     console.error('Database error:', err);
                     return res.status(500).send('Database error');
@@ -84,8 +76,8 @@ app.get('/auth/callback', async (req, res) => {
                 // حفظ البيانات في الجلسة
                 req.session.userId = uuid;
                 req.session.username = username;
-                req.session.minecraftToken = minecraftToken.token;
-                req.session.isRealMinecraft = true;
+                req.session.minecraftToken = minecraftToken;
+                req.session.isRealMinecraft = isRealMinecraft;
                 
                 req.session.save((err) => {
                     if (err) console.error('Session save error:', err);
@@ -94,22 +86,7 @@ app.get('/auth/callback', async (req, res) => {
             });
     } catch (error) {
         console.error('Auth callback error:', error);
-        // في حالة الفشل، نحاول الحصول على بيانات مؤقتة
-        try {
-            const { uuid, username, minecraftToken, isRealMinecraft } = await getMinecraftProfile(null);
-            db.run(`INSERT INTO users (microsoft_id, username, uuid, minecraft_token, is_real) VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
-                [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0], (err) => {
-                    if (err) return res.status(500).send('Database error');
-                    req.session.userId = uuid;
-                    req.session.username = username;
-                    req.session.minecraftToken = minecraftToken;
-                    req.session.isRealMinecraft = isRealMinecraft;
-                    req.session.save(() => res.redirect('/'));
-                });
-        } catch (fallbackError) {
-            res.status(500).send('Authentication failed: ' + error.message);
-        }
+        res.status(500).send('Authentication failed: ' + error.message);
     }
 });
 
@@ -123,119 +100,25 @@ app.get('/api/user', (req, res) => {
     });
 });
 
+// مسار تسجيل الخروج
 app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
-// باقي مسارات API (نفس ما كانت سابقاً)
-app.get('/api/bots', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
-        res.json({ bots: bots || [] });
-    });
-});
-
-app.post('/api/create-bot-cloud', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botName, botType, serverIp, teamNames, version } = req.body;
-    db.get('SELECT COUNT(*) as count FROM bots WHERE user_id = ? AND is_cloud_bot = 1', [req.session.userId], (err, row) => {
-        if (row.count >= 1) return res.status(400).json({ error: 'You already have a free cloud bot' });
-        db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status, is_cloud_bot) VALUES (?, ?, ?, ?, ?, ?, 'stopped', 1)`,
-            [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10'], function(err) {
-                if (err) return res.status(500).json({ error: err.message });
-                res.json({ success: true, botId: this.lastID });
-            });
-    });
-});
-
-app.post('/api/start-cloud-bot', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    if (!req.session.isRealMinecraft) {
-        return res.status(400).json({ error: 'need_minecraft_auth', message: 'حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي' });
-    }
-    const { botId } = req.body;
-    db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
-        if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
-        if (botProcesses.has(botId)) return res.json({ success: true });
-        startBot(botId, bot.bot_name, req.session.userId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, req.session.minecraftToken);
-        db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
-        res.json({ success: true });
-    });
-});
-
-app.post('/api/stop-bot', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botId } = req.body;
-    if (stopBot(botId)) db.run('UPDATE bots SET status = ? WHERE id = ?', ['stopped', botId]);
-    res.json({ success: true });
-});
-
-app.delete('/api/delete-bot', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botId } = req.body;
-    stopBot(botId);
-    deleteBot(botId);
-    db.run('DELETE FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId]);
-    res.json({ success: true });
-});
-
-app.put('/api/update-bot', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botId, botName, botType, serverIp, teamNames, version } = req.body;
-    stopBot(botId);
-    db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ?, status = 'stopped' WHERE id = ? AND user_id = ?`,
-        [botName, botType, serverIp, teamNames || '', version || '1.21.10', botId, req.session.userId]);
-    res.json({ success: true });
-});
-
-app.get('/api/bot-logs/:botId', (req, res) => {
-    res.json({ logs: getBotLogs(parseInt(req.params.botId)) });
-});
-
-app.get('/api/bot-stats/:botId', (req, res) => {
-    res.json(getBotStats(parseInt(req.params.botId)));
-});
-
-app.get('/api/bot-inventory/:botId', (req, res) => {
-    res.json(getBotInventory(parseInt(req.params.botId)));
-});
-
-app.post('/api/bot-command', (req, res) => {
-    const { botId, command, extra } = req.body;
-    sendCommand(botId, command, extra);
-    res.json({ success: true });
-});
-
-app.post('/api/restart-bot', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botId } = req.body;
-    db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
-        if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
-        stopBot(botId);
-        setTimeout(() => {
-            startBot(botId, bot.bot_name, req.session.userId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, req.session.minecraftToken);
-            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
-        }, 1000);
-        res.json({ success: true });
-    });
-});
-
-app.post('/api/clear-logs/:botId', (req, res) => {
-    const p = path.join(__dirname, 'logs', `bot-${req.params.botId}.log`);
-    if (fs.existsSync(p)) fs.writeFileSync(p, '');
-    res.json({ success: true });
-});
-
-app.get('/api/tasks/:botId', (req, res) => {
-    db.all('SELECT * FROM tasks WHERE bot_id = ?', [req.params.botId], (err, tasks) => {
-        res.json({ tasks: tasks || [] });
-    });
-});
-
-app.get('/camera/:botId', (req, res) => {
-    const botId = parseInt(req.params.botId);
-    const viewerPort = 8080 + botId;
-    res.redirect(`http://localhost:${viewerPort}`);
-});
+// باقي مسارات API الخاصة بالبوتات... (كما هي)
+app.get('/api/bots', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => { res.json({ bots: bots || [] }); }); });
+app.post('/api/create-bot-cloud', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botName, botType, serverIp, teamNames, version } = req.body; db.get('SELECT COUNT(*) as count FROM bots WHERE user_id = ? AND is_cloud_bot = 1', [req.session.userId], (err, row) => { if (row.count >= 1) return res.status(400).json({ error: 'You already have a free cloud bot' }); db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status, is_cloud_bot) VALUES (?, ?, ?, ?, ?, ?, 'stopped', 1)`, [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10'], function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ success: true, botId: this.lastID }); }); }); });
+app.post('/api/start-cloud-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); if (!req.session.isRealMinecraft) { return res.status(400).json({ error: 'need_minecraft_auth', message: 'حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي' }); } const { botId } = req.body; db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => { if (err || !bot) return res.status(404).json({ error: 'Bot not found' }); if (botProcesses.has(botId)) return res.json({ success: true }); startBot(botId, bot.bot_name, req.session.userId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, req.session.minecraftToken); db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]); res.json({ success: true }); }); });
+app.post('/api/stop-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; if (stopBot(botId)) db.run('UPDATE bots SET status = ? WHERE id = ?', ['stopped', botId]); res.json({ success: true }); });
+app.delete('/api/delete-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; stopBot(botId); deleteBot(botId); db.run('DELETE FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId]); res.json({ success: true }); });
+app.put('/api/update-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId, botName, botType, serverIp, teamNames, version } = req.body; stopBot(botId); db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ?, status = 'stopped' WHERE id = ? AND user_id = ?`, [botName, botType, serverIp, teamNames || '', version || '1.21.10', botId, req.session.userId]); res.json({ success: true }); });
+app.get('/api/bot-logs/:botId', (req, res) => { res.json({ logs: getBotLogs(parseInt(req.params.botId)) }); });
+app.get('/api/bot-stats/:botId', (req, res) => { res.json(getBotStats(parseInt(req.params.botId))); });
+app.get('/api/bot-inventory/:botId', (req, res) => { res.json(getBotInventory(parseInt(req.params.botId))); });
+app.post('/api/bot-command', (req, res) => { const { botId, command, extra } = req.body; sendCommand(botId, command, extra); res.json({ success: true }); });
+app.post('/api/restart-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => { if (err || !bot) return res.status(404).json({ error: 'Bot not found' }); stopBot(botId); setTimeout(() => { startBot(botId, bot.bot_name, req.session.userId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, req.session.minecraftToken); db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]); }, 1000); res.json({ success: true }); }); });
+app.post('/api/clear-logs/:botId', (req, res) => { const p = path.join(__dirname, 'logs', `bot-${req.params.botId}.log`); if (fs.existsSync(p)) fs.writeFileSync(p, ''); res.json({ success: true }); });
+app.get('/api/tasks/:botId', (req, res) => { db.all('SELECT * FROM tasks WHERE bot_id = ?', [req.params.botId], (err, tasks) => { res.json({ tasks: tasks || [] }); }); });
+app.get('/camera/:botId', (req, res) => { const botId = parseInt(req.params.botId); const viewerPort = 8080 + botId; res.redirect(`http://localhost:${viewerPort}`); });
 
 app.listen(PORT, () => console.log(`✅ Main server running on port ${PORT}`));
