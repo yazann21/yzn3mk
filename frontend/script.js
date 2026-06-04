@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - نظام مستخدمين متكامل (تسجيل دخول محلي)
+// BOT CRAFT v4.1 – Simplified Local Auth + Bot Verification (No Minecraft Credentials)
 // ========================================
 
 let currentUser = null;
@@ -15,6 +15,7 @@ let globalColor = '#7c3aed';
 let activityChart = null;
 let distributionChart = null;
 
+// إصدارات ماينكرافت (نفس القائمة السابقة)
 const allVersions = [
     '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21',
     '1.20.4', '1.20.3', '1.20.2', '1.20.1', '1.20', '1.19.4', '1.19.2', '1.19', '1.18.2', '1.18.1', '1.18',
@@ -49,22 +50,19 @@ function initAuthTabs() {
         login: document.getElementById('loginPanel'),
         register: document.getElementById('registerPanel')
     };
-    // نافذة إعادة التعيين مخفية افتراضياً
     const resetPanel = document.getElementById('resetPanel');
-    
+    if (!tabs.length) return;
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const target = tab.dataset.tab;
             tabs.forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
-            Object.values(panels).forEach(panel => panel?.classList.remove('active'));
+            Object.values(panels).forEach(p => p?.classList.remove('active'));
             if (target === 'login') panels.login?.classList.add('active');
             if (target === 'register') panels.register?.classList.add('active');
             if (resetPanel) resetPanel.style.display = 'none';
         });
     });
-    
-    // روابط إضافية
     const forgotLink = document.getElementById('forgotPasswordLink');
     const backToLogin = document.getElementById('backToLoginLink');
     if (forgotLink) {
@@ -118,7 +116,6 @@ function showApp() {
     document.getElementById('appWrapper').style.display = 'flex';
     document.getElementById('sidebarUsername').innerHTML = currentUser.username;
     document.getElementById('settingsUsername').innerHTML = currentUser.username;
-    document.getElementById('settingsEmail').innerHTML = currentUser.email || '';
     document.getElementById('welcomeUsername').innerHTML = currentUser.username;
 }
 
@@ -133,7 +130,6 @@ function logout() {
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
     
-    // تسجيل الدخول
     document.getElementById('loginBtn')?.addEventListener('click', () => {
         const email = document.getElementById('loginEmail').value;
         const password = document.getElementById('loginPassword').value;
@@ -148,7 +144,6 @@ function initEventListeners() {
         });
     });
     
-    // تسجيل حساب جديد
     document.getElementById('registerBtn')?.addEventListener('click', () => {
         const username = document.getElementById('regUsername').value;
         const email = document.getElementById('regEmail').value;
@@ -166,7 +161,6 @@ function initEventListeners() {
         });
     });
     
-    // إعادة تعيين كلمة المرور (وهمي حالياً)
     document.getElementById('resetPasswordBtn')?.addEventListener('click', () => {
         const email = document.getElementById('resetEmail').value;
         if (!email) return alert('أدخل بريدك الإلكتروني');
@@ -179,10 +173,11 @@ function initEventListeners() {
         }).catch(() => alert('حدث خطأ، حاول لاحقاً'));
     });
     
-    // باقي الأحداث (نفس السابق)
+    // باقي الأحداث
     document.getElementById('createBotType')?.addEventListener('change', () => {});
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
-        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
+        const teamRow = document.getElementById('editTeamGroup');
+        if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
     });
     document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -341,13 +336,11 @@ function renderBots() {
     `).join('');
 }
 
-// زر التحقق من حساب البوت
 function verifyBotAccount(botId) {
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
             if (data.url) {
-                // فتح نافذة جديدة لمصادقة ماينكرافت
                 window.open(data.url, '_blank', 'width=800,height=600');
                 alert('تم فتح نافذة المصادقة. قم بتسجيل الدخول بحساب ماينكرافت الخاص بهذا البوت.');
             } else if (data.message) {
@@ -371,18 +364,20 @@ function startBot(id) {
     });
 }
 
-// باقي الدوال (stopBot, restartBot, deleteBot, openEditModal, saveEditBot, createBotForm, logs, camera, control) كما هي مع إضافة credentials
 function stopBot(id) {
     fetch('/api/stop-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: parseInt(id) }) }).then(() => { loadBots(); loadDashboard(); });
 }
+
 function restartBot(id) {
     fetch('/api/restart-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: parseInt(id) }) }).then(() => setTimeout(() => { loadBots(); loadDashboard(); }, 2000));
 }
+
 function deleteBot(id) {
     if (confirm('حذف البوت نهائياً؟')) {
         fetch('/api/delete-bot', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: parseInt(id) }) }).then(() => { loadBots(); loadDashboard(); });
     }
 }
+
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
@@ -391,11 +386,15 @@ function openEditModal(id) {
     document.getElementById('editBotType').value = bot.bot_type;
     document.getElementById('editServerIp').value = bot.server_ip;
     document.getElementById('editTeamNames').value = bot.team_names || '';
-    document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
-    document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
+    const editVersionSelect = document.getElementById('editVersion');
+    if (editVersionSelect) editVersionSelect.innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
+    const teamGroup = document.getElementById('editTeamGroup');
+    if (teamGroup) teamGroup.style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
     document.getElementById('editModal').style.display = 'flex';
 }
+
 function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
+
 function saveEditBot() {
     fetch('/api/update-bot', {
         method: 'PUT',
@@ -411,6 +410,7 @@ function saveEditBot() {
         })
     }).then(() => { closeEditModal(); loadBots(); });
 }
+
 document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
     e.preventDefault();
     fetch('/api/create-bot-cloud', {
@@ -422,20 +422,21 @@ document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
             botType: document.getElementById('createBotType').value,
             serverIp: document.getElementById('createServerIp').value,
             teamNames: '',
-            version: document.getElementById('createVersion').value,
-            mcEmail: document.getElementById('createMcEmail').value,
-            mcPassword: document.getElementById('createMcPassword').value
+            version: document.getElementById('createVersion').value
         })
     }).then(res => res.json()).then(data => {
         if (data.error) alert('خطأ: ' + data.error);
         else { alert('تم إنشاء البوت'); navigateTo('bots'); }
     });
 });
+
 function openCameraViewer(botId) {
     const viewerPort = 8080 + parseInt(botId);
     window.open(`http://localhost:${viewerPort}`, '_blank', 'width=1200,height=800');
 }
+
 function closeCameraModal() { document.getElementById('cameraModal').style.display = 'none'; }
+
 function openLogs(id) {
     currentLogsBotId = id;
     document.getElementById('logsModal').style.display = 'flex';
@@ -447,11 +448,13 @@ function openLogs(id) {
 function closeLogs() { if (logsInterval) clearInterval(logsInterval); document.getElementById('logsModal').style.display = 'none'; }
 function refreshLogs() { if (currentLogsBotId) fetch(`/api/bot-logs/${currentLogsBotId}`, { credentials: 'include' }).then(res => res.json()).then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); }); }
 function clearLogs() { if (currentLogsBotId) fetch(`/api/clear-logs/${currentLogsBotId}`, { method: 'POST', credentials: 'include' }).catch(console.error); refreshLogs(); }
+
 function openBotControl(id, name) {
     controlBotId = id;
     document.getElementById('controlTitle').innerHTML = `🎮 التحكم بـ ${name}`;
     const viewerPort = 8080 + parseInt(id);
-    document.getElementById('controlCameraFrame').src = `http://localhost:${viewerPort}`;
+    const camFrame = document.getElementById('controlCameraFrame');
+    if (camFrame) camFrame.src = `http://localhost:${viewerPort}`;
     document.getElementById('controlModal').style.display = 'flex';
     if (statsInterval) clearInterval(statsInterval);
     if (inventoryInterval) clearInterval(inventoryInterval);
@@ -461,13 +464,14 @@ function openBotControl(id, name) {
     fetchInventory(id);
 }
 function closeBotControl() { if (statsInterval) clearInterval(statsInterval); if (inventoryInterval) clearInterval(inventoryInterval); document.getElementById('controlModal').style.display = 'none'; controlBotId = null; }
-function fetchBotStats(id) { fetch(`/api/bot-stats/${id}`, { credentials: 'include' }).then(res => res.json()).then(data => { document.getElementById('statHealth').innerHTML = data.health || '20'; document.getElementById('statFood').innerHTML = data.food || '20'; document.getElementById('statPosition').innerHTML = data.position || '0,0,0'; document.getElementById('statArmor').innerHTML = data.armor || 'لا يوجد'; document.getElementById('statWeapon').innerHTML = data.weapon || 'لا يوجد'; document.getElementById('statLevel').innerHTML = data.level || '0'; document.getElementById('detailLevel').innerHTML = data.level || '0'; document.getElementById('detailXp').innerHTML = data.xp || '0'; document.getElementById('detailKills').innerHTML = data.kills || '0'; document.getElementById('detailDeaths').innerHTML = data.deaths || '0'; }).catch(() => {}); }
-function fetchInventory(id) { fetch(`/api/bot-inventory/${id}`, { credentials: 'include' }).then(res => res.json()).then(data => { if (data.inventory) { currentInventory = data.inventory; renderInventory(); document.getElementById('invHelmet').innerHTML = data.helmet || 'فارغ'; document.getElementById('invChest').innerHTML = data.chest || 'فارغ'; document.getElementById('invLegs').innerHTML = data.legs || 'فارغ'; document.getElementById('invBoots').innerHTML = data.boots || 'فارغ'; document.getElementById('invWeapon').innerHTML = data.weapon || 'فارغ'; } }).catch(() => {}); }
+function fetchBotStats(id) { fetch(`/api/bot-stats/${id}`, { credentials: 'include' }).then(res => res.json()).then(data => { if (!data) return; document.getElementById('statHealth').innerHTML = data.health || '20'; document.getElementById('statFood').innerHTML = data.food || '20'; document.getElementById('statPosition').innerHTML = data.position || '0,0,0'; document.getElementById('statArmor').innerHTML = data.armor || 'لا يوجد'; document.getElementById('statWeapon').innerHTML = data.weapon || 'لا يوجد'; document.getElementById('statLevel').innerHTML = data.level || '0'; document.getElementById('detailLevel').innerHTML = data.level || '0'; document.getElementById('detailXp').innerHTML = data.xp || '0'; document.getElementById('detailKills').innerHTML = data.kills || '0'; document.getElementById('detailDeaths').innerHTML = data.deaths || '0'; }).catch(() => {}); }
+function fetchInventory(id) { fetch(`/api/bot-inventory/${id}`, { credentials: 'include' }).then(res => res.json()).then(data => { if (data && data.inventory) { currentInventory = data.inventory; renderInventory(); document.getElementById('invHelmet').innerHTML = data.helmet || 'فارغ'; document.getElementById('invChest').innerHTML = data.chest || 'فارغ'; document.getElementById('invLegs').innerHTML = data.legs || 'فارغ'; document.getElementById('invBoots').innerHTML = data.boots || 'فارغ'; document.getElementById('invWeapon').innerHTML = data.weapon || 'فارغ'; } }).catch(() => {}); }
 function renderInventory() { const grid = document.getElementById('inventoryGrid'); if (!grid) return; grid.innerHTML = ''; for (let i = 0; i < 36; i++) { const item = currentInventory[i]; const div = document.createElement('div'); div.className = 'inv-slot' + (selectedSlot === i ? ' selected' : ''); div.innerHTML = item ? `${item.name}<br><small>${item.count || 1}</small>` : '<i class="fas fa-box-open"></i>'; div.onclick = () => selectSlot(i); grid.appendChild(div); } }
 function selectSlot(slot) { selectedSlot = slot; renderInventory(); }
 function refreshInventory() { if (controlBotId) fetchInventory(controlBotId); }
 function sendCommand(cmd, extra = null) { if (!controlBotId) return; fetch('/api/bot-command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: controlBotId, command: cmd, extra }) }); }
 function sendChatMessage() { const msg = document.getElementById('chatInput')?.value; if (!msg) return; sendCommand('chat', msg); document.getElementById('chatInput').value = ''; }
+
 document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => {
     const cmd = btn.dataset.cmd || btn.dataset.recipe;
     if (cmd) btn.addEventListener('click', () => {
@@ -475,6 +479,7 @@ document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => 
         else if (btn.dataset.recipe) sendCommand('craft', btn.dataset.recipe);
     });
 });
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const tab = btn.dataset.tab;
@@ -484,6 +489,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.getElementById(`${tab}Tab`).classList.add('active');
     });
 });
+
 function loadAnalytics() {
     fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
         const bots = data.bots || [];
@@ -497,6 +503,7 @@ function loadAnalytics() {
         });
     });
 }
+
 function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
 function populateVersions(selectId) { const select = document.getElementById(selectId); if (select) select.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join(''); }
 populateVersions('createVersion');
