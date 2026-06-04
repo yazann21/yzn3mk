@@ -15,6 +15,7 @@
     </div>
 
     <div class="app-wrapper" id="appWrapper" style="display: none;">
+        <!-- شريط جانبي فاخر -->
         <aside class="glass-sidebar">
             <div class="sidebar-header">
                 <div class="logo"><div class="logo-icon"><i class="fas fa-robot"></i></div><div class="logo-text">Bot<span>Craft</span></div></div>
@@ -40,6 +41,7 @@
             </div>
         </aside>
 
+        <!-- المحتوى الرئيسي -->
         <main class="main-content">
             <header class="glass-header">
                 <div class="header-left">
@@ -51,6 +53,7 @@
                 </div>
             </header>
 
+            <!-- Dashboard Page -->
             <div id="dashboardPage" class="page active">
                 <div class="stats-grid">
                     <div class="stat-card glass"><div class="stat-icon purple"><i class="fas fa-robot"></i></div><div class="stat-info"><h3 class="stat-value" id="statTotalBots">0</h3><p class="stat-label">إجمالي البوتات</p></div><div class="stat-trend up">+12%</div></div>
@@ -65,6 +68,7 @@
                 <div class="card glass"><div class="card-header"><h3><i class="fas fa-history"></i> آخر النشاطات</h3></div><div class="card-body"><div class="activities-list" id="recentActivities"></div></div></div>
             </div>
 
+            <!-- Bots Page -->
             <div id="botsPage" class="page">
                 <div class="page-actions">
                     <div class="filter-group">
@@ -77,26 +81,28 @@
                 <div id="botsGrid" class="bots-grid"></div>
             </div>
 
+            <!-- Create Page -->
             <div id="createPage" class="page">
                 <div class="create-container">
-                    <div class="create-header"><div class="create-icon"><i class="fas fa-cogs"></i></div><h2>تهيئة بوت جديد</h2><p>أدخل معلومات البوت</p></div>
+                    <div class="create-header"><div class="create-icon"><i class="fas fa-cogs"></i></div><h2>تهيئة بوت جديد</h2><p>أدخل معلومات البوت لبدء التشغيل الفوري</p></div>
                     <div class="create-form-wrapper glass">
                         <form id="createBotForm">
                             <div class="form-row">
                                 <div class="input-group floating"><input type="text" id="createBotName" required><label>🤖 اسم البوت</label><span class="input-border"></span></div>
-                                <div class="input-group floating"><select id="createBotType" required><option value=""></option><option value="afk">😴 مأفك</option><option value="hunter">⚔️ صياد</option><option value="coward">😨 جبان</option></select><label>🎮 نوع البوت</label><span class="input-border"></span></div>
+                                <div class="input-group floating"><select id="createBotType" required><option value=""></option><option value="afk">😴 مأفك - يدافع عن نفسه</option><option value="hunter">⚔️ صياد - يطارد اللاعبين</option><option value="coward">😨 جبان - ينفصل عند الضربة</option></select><label>🎮 نوع البوت</label><span class="input-border"></span></div>
                             </div>
                             <div class="form-row">
                                 <div class="input-group floating"><input type="text" id="createServerIp" required><label>🌐 عنوان السيرفر</label><span class="input-border"></span></div>
                                 <div class="input-group floating"><select id="createVersion" required></select><label>🔧 إصدار ماينكرافت</label><span class="input-border"></span></div>
                             </div>
-                            <div class="info-banner"><i class="fas fa-info-circle"></i><span>بعد إنشاء البوت، سيظهر رابط التحقق في سجل الخادم (Logs)</span></div>
+                            <div class="info-banner"><i class="fas fa-info-circle"></i><span>بعد إنشاء البوت، اضغط زر "تحقق" لربط حساب ماينكرافت الحقيقي الخاص بك.</span></div>
                             <button type="submit" class="btn-submit-glow"><i class="fas fa-rocket"></i><span>إنشاء البوت</span></button>
                         </form>
                     </div>
                 </div>
             </div>
 
+            <!-- Analytics Page -->
             <div id="analyticsPage" class="page">
                 <div class="stats-detailed-grid">
                     <div class="stat-detailed glass"><div class="stat-detailed-icon"><i class="fas fa-calendar-alt"></i></div><div class="stat-detailed-info"><div class="stat-detailed-value" id="analyticsDaysActive">0</div><div class="stat-detailed-label">أيام النشاط</div></div></div>
@@ -107,6 +113,7 @@
                 <div class="card glass"><div class="card-header"><h3><i class="fas fa-chart-pie"></i> توزيع البوتات</h3></div><div class="card-body"><canvas id="distributionChart" height="250"></canvas></div></div>
             </div>
 
+            <!-- Settings Page -->
             <div id="settingsPage" class="page">
                 <div class="settings-container">
                     <div class="settings-section glass"><div class="settings-section-header"><i class="fas fa-user-circle"></i><h3>معلومات الحساب</h3></div><div class="settings-section-body"><div class="settings-row"><span class="settings-label">اسم المستخدم:</span><span class="settings-value" id="settingsUsername">-</span></div></div></div>
@@ -115,17 +122,151 @@
             </div>
         </main>
 
-        <!-- Modals -->
-        <div id="editModal" class="modal-glass"><div class="modal-glass-content"><div class="modal-header"><h3><i class="fas fa-pen"></i> تعديل البوت</h3><button class="modal-close" onclick="closeEditModal()"><i class="fas fa-times"></i></button></div><div class="modal-body"><input type="hidden" id="editBotId"><div class="input-group floating"><input type="text" id="editBotName"><label>اسم البوت</label><span class="input-border"></span></div><div class="input-group floating"><select id="editBotType"><option value="afk">مأفك</option><option value="hunter">صياد</option><option value="coward">جبان</option></select><label>نوع البوت</label><span class="input-border"></span></div><div class="input-group floating"><input type="text" id="editServerIp"><label>عنوان السيرفر</label><span class="input-border"></span></div><div class="input-group floating"><select id="editVersion"></select><label>إصدار ماينكرافت</label><span class="input-border"></span></div></div><div class="modal-footer"><button class="btn-secondary" onclick="closeEditModal()">إلغاء</button><button class="btn-primary" onclick="saveEditBot()">حفظ</button></div></div></div>
+        <!-- ========== MODALS ========== -->
+        <!-- نافذة تعديل البوت -->
+        <div id="editModal" class="modal-glass">
+            <div class="modal-glass-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-pen"></i> تعديل البوت</h3>
+                    <button class="modal-close" onclick="closeEditModal()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editBotId">
+                    <div class="input-group floating"><input type="text" id="editBotName"><label>اسم البوت</label><span class="input-border"></span></div>
+                    <div class="input-group floating"><select id="editBotType"><option value="afk">مأفك</option><option value="hunter">صياد</option><option value="coward">جبان</option></select><label>نوع البوت</label><span class="input-border"></span></div>
+                    <div class="input-group floating"><input type="text" id="editServerIp"><label>عنوان السيرفر</label><span class="input-border"></span></div>
+                    <div class="input-group floating" id="editTeamGroup"><input type="text" id="editTeamNames"><label>أسماء الأصدقاء</label><span class="input-border"></span></div>
+                    <div class="input-group floating"><select id="editVersion"></select><label>إصدار ماينكرافت</label><span class="input-border"></span></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="closeEditModal()">إلغاء</button>
+                    <button class="btn-primary" onclick="saveEditBot()">حفظ</button>
+                </div>
+            </div>
+        </div>
 
-        <div id="logsModal" class="modal-glass"><div class="modal-glass-content modal-large"><div class="modal-header"><h3><i class="fas fa-terminal"></i> سجلات البوت</h3><button class="modal-close" onclick="closeLogs()"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="logs-toolbar"><button class="btn-sm" onclick="refreshLogs()"><i class="fas fa-sync-alt"></i> تحديث</button><button class="btn-sm btn-danger" onclick="clearLogs()"><i class="fas fa-trash"></i> مسح</button></div><pre id="logsText" class="logs-pre"></pre></div></div></div>
+        <!-- نافذة السجلات -->
+        <div id="logsModal" class="modal-glass">
+            <div class="modal-glass-content modal-large">
+                <div class="modal-header">
+                    <h3><i class="fas fa-terminal"></i> سجلات البوت</h3>
+                    <button class="modal-close" onclick="closeLogs()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="logs-toolbar">
+                        <button class="btn-sm" onclick="refreshLogs()"><i class="fas fa-sync-alt"></i> تحديث</button>
+                        <button class="btn-sm btn-danger" onclick="clearLogs()"><i class="fas fa-trash"></i> مسح</button>
+                    </div>
+                    <pre id="logsText" class="logs-pre"></pre>
+                </div>
+            </div>
+        </div>
 
-        <div id="cameraModal" class="modal-glass modal-full"><div class="modal-glass-content-full"><div class="modal-header"><h3><i class="fas fa-video"></i> كاميرا المراقبة</h3><button class="modal-close" onclick="closeCameraModal()"><i class="fas fa-times"></i></button></div><div class="modal-body"><iframe id="cameraFrame" class="camera-iframe" src="about:blank"></iframe></div></div></div>
+        <!-- نافذة الكاميرا -->
+        <div id="cameraModal" class="modal-glass modal-full">
+            <div class="modal-glass-content-full">
+                <div class="modal-header">
+                    <h3><i class="fas fa-video"></i> كاميرا المراقبة</h3>
+                    <button class="modal-close" onclick="closeCameraModal()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <iframe id="cameraFrame" class="camera-iframe" src="about:blank"></iframe>
+                </div>
+            </div>
+        </div>
 
-        <div id="controlModal" class="modal-glass modal-full"><div class="modal-glass-content-full"><div class="modal-header"><h3 id="controlTitle"><i class="fas fa-gamepad"></i> التحكم بالبوت</h3><button class="modal-close" onclick="closeBotControl()"><i class="fas fa-times"></i></button></div><div class="control-tabs"><button class="tab-btn active" data-tab="controls">🎮 تحكم</button><button class="tab-btn" data-tab="inventory">📦 المخزون</button><button class="tab-btn" data-tab="crafting">🔨 تصنيع</button><button class="tab-btn" data-tab="info">📊 معلومات</button></div><div class="control-body"><div id="controlsTab" class="tab-pane active"><div class="camera-area"><div class="camera-header">📷 كاميرا المراقبة</div><iframe id="controlCameraFrame" class="camera-iframe" src="about:blank"></iframe></div><div class="stats-area"><div class="stat-item"><span>❤️ الصحة:</span><span id="statHealth">--</span></div><div class="stat-item"><span>🍗 الجوع:</span><span id="statFood">--</span></div><div class="stat-item"><span>📍 الموقع:</span><span id="statPosition">--</span></div><div class="stat-item"><span>🛡️ الدرع:</span><span id="statArmor">--</span></div><div class="stat-item"><span>⚔️ السلاح:</span><span id="statWeapon">--</span></div><div class="stat-item"><span>📊 المستوى:</span><span id="statLevel">--</span></div></div><div class="movement-buttons"><h4>🎮 الحركة</h4><div class="move-grid"><button class="move-btn" data-cmd="moveForward">⬆️ أمام</button><button class="move-btn" data-cmd="moveBack">⬇️ خلف</button><button class="move-btn" data-cmd="moveLeft">⬅️ يسار</button><button class="move-btn" data-cmd="moveRight">➡️ يمين</button><button class="move-btn" data-cmd="jump">🦘 قفز</button><button class="move-btn" data-cmd="stopMoving">⏹️ توقف</button></div></div><div class="action-buttons"><h4>⚔️ القتال</h4><div class="action-grid"><button class="action-btn" data-cmd="attack">🗡️ اهاجم</button><button class="action-btn" data-cmd="sneak">🥷 انحناء</button><button class="action-btn" data-cmd="unsneak">🧍 وقوف</button><button class="action-btn" data-cmd="equipBest">🛡️ البس أفضل درع</button><button class="action-btn" data-cmd="equipBestWeapon">⚔️ البس أفضل سلاح</button></div></div><div class="chat-area"><h4>💬 شات</h4><input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالة..."><button class="btn-primary" onclick="sendChatMessage()">إرسال</button></div></div><div id="inventoryTab" class="tab-pane"><div class="inventory-header"><h4>المخزون</h4><button class="btn-secondary btn-sm" onclick="refreshInventory()">🔄 تحديث</button></div><div class="armor-stats"><div>🪖 خوذة: <span id="invHelmet">فارغ</span></div><div>🦺 صدرية: <span id="invChest">فارغ</span></div><div>👖 بنطلون: <span id="invLegs">فارغ</span></div><div>👢 حذاء: <span id="invBoots">فارغ</span></div><div>⚔️ سلاح: <span id="invWeapon">فارغ</span></div></div><div id="inventoryGrid" class="inventory-grid"></div></div><div id="craftingTab" class="tab-pane"><h4>طاولة التصنيع</h4><div id="craftingGrid" class="crafting-grid"></div><div class="recipes-list"><button class="recipe-btn" data-recipe="wooden_sword">🗡️ سيف خشب</button><button class="recipe-btn" data-recipe="stone_sword">🗡️ سيف حجر</button><button class="recipe-btn" data-recipe="iron_sword">🗡️ سيف حديد</button><button class="recipe-btn" data-recipe="diamond_sword">🗡️ سيف ألماس</button></div></div><div id="infoTab" class="tab-pane"><div class="info-card"><div>🏆 المستوى: <span id="detailLevel">--</span></div><div>✨ الخبرة: <span id="detailXp">--</span></div><div>☠️ القتلى: <span id="detailKills">--</span></div><div>💀 الوفيات: <span id="detailDeaths">--</span></div></div></div></div></div></div>
+        <!-- نافذة التحكم المتقدم -->
+        <div id="controlModal" class="modal-glass modal-full">
+            <div class="modal-glass-content-full">
+                <div class="modal-header">
+                    <h3 id="controlTitle"><i class="fas fa-gamepad"></i> التحكم بالبوت</h3>
+                    <button class="modal-close" onclick="closeBotControl()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="control-tabs">
+                    <button class="tab-btn active" data-tab="controls">🎮 تحكم</button>
+                    <button class="tab-btn" data-tab="inventory">📦 المخزون</button>
+                    <button class="tab-btn" data-tab="crafting">🔨 تصنيع</button>
+                    <button class="tab-btn" data-tab="info">📊 معلومات</button>
+                </div>
+                <div class="control-body">
+                    <div id="controlsTab" class="tab-pane active">
+                        <div class="camera-area">
+                            <div class="camera-header">📷 كاميرا المراقبة</div>
+                            <iframe id="controlCameraFrame" class="camera-iframe" src="about:blank"></iframe>
+                        </div>
+                        <div class="stats-area">
+                            <div class="stat-item"><span>❤️ الصحة:</span><span id="statHealth">--</span></div>
+                            <div class="stat-item"><span>🍗 الجوع:</span><span id="statFood">--</span></div>
+                            <div class="stat-item"><span>📍 الموقع:</span><span id="statPosition">--</span></div>
+                            <div class="stat-item"><span>🛡️ الدرع:</span><span id="statArmor">--</span></div>
+                            <div class="stat-item"><span>⚔️ السلاح:</span><span id="statWeapon">--</span></div>
+                            <div class="stat-item"><span>📊 المستوى:</span><span id="statLevel">--</span></div>
+                        </div>
+                        <div class="movement-buttons">
+                            <h4>🎮 الحركة</h4>
+                            <div class="move-grid">
+                                <button class="move-btn" data-cmd="moveForward">⬆️ أمام</button>
+                                <button class="move-btn" data-cmd="moveBack">⬇️ خلف</button>
+                                <button class="move-btn" data-cmd="moveLeft">⬅️ يسار</button>
+                                <button class="move-btn" data-cmd="moveRight">➡️ يمين</button>
+                                <button class="move-btn" data-cmd="jump">🦘 قفز</button>
+                                <button class="move-btn" data-cmd="stopMoving">⏹️ توقف</button>
+                            </div>
+                        </div>
+                        <div class="action-buttons">
+                            <h4>⚔️ القتال</h4>
+                            <div class="action-grid">
+                                <button class="action-btn" data-cmd="attack">🗡️ اهاجم</button>
+                                <button class="action-btn" data-cmd="sneak">🥷 انحناء</button>
+                                <button class="action-btn" data-cmd="unsneak">🧍 وقوف</button>
+                                <button class="action-btn" data-cmd="equipBest">🛡️ البس أفضل درع</button>
+                                <button class="action-btn" data-cmd="equipBestWeapon">⚔️ البس أفضل سلاح</button>
+                            </div>
+                        </div>
+                        <div class="chat-area">
+                            <h4>💬 شات</h4>
+                            <input type="text" id="chatInput" class="chat-input" placeholder="اكتب رسالة...">
+                            <button class="btn-primary" onclick="sendChatMessage()">إرسال</button>
+                        </div>
+                    </div>
+                    <div id="inventoryTab" class="tab-pane">
+                        <div class="inventory-header">
+                            <h4>المخزون</h4>
+                            <button class="btn-secondary btn-sm" onclick="refreshInventory()">🔄 تحديث</button>
+                        </div>
+                        <div class="armor-stats">
+                            <div>🪖 خوذة: <span id="invHelmet">فارغ</span></div>
+                            <div>🦺 صدرية: <span id="invChest">فارغ</span></div>
+                            <div>👖 بنطلون: <span id="invLegs">فارغ</span></div>
+                            <div>👢 حذاء: <span id="invBoots">فارغ</span></div>
+                            <div>⚔️ سلاح: <span id="invWeapon">فارغ</span></div>
+                        </div>
+                        <div id="inventoryGrid" class="inventory-grid"></div>
+                    </div>
+                    <div id="craftingTab" class="tab-pane">
+                        <h4>طاولة التصنيع</h4>
+                        <div id="craftingGrid" class="crafting-grid"></div>
+                        <div class="recipes-list">
+                            <button class="recipe-btn" data-recipe="wooden_sword">🗡️ سيف خشب</button>
+                            <button class="recipe-btn" data-recipe="stone_sword">🗡️ سيف حجر</button>
+                            <button class="recipe-btn" data-recipe="iron_sword">🗡️ سيف حديد</button>
+                            <button class="recipe-btn" data-recipe="diamond_sword">🗡️ سيف ألماس</button>
+                        </div>
+                    </div>
+                    <div id="infoTab" class="tab-pane">
+                        <div class="info-card">
+                            <div>🏆 المستوى: <span id="detailLevel">--</span></div>
+                            <div>✨ الخبرة: <span id="detailXp">--</span></div>
+                            <div>☠️ القتلى: <span id="detailKills">--</span></div>
+                            <div>💀 الوفيات: <span id="detailDeaths">--</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- شاشة تسجيل الدخول -->
+    <!-- شاشة تسجيل الدخول (مايكروسوفت فقط) -->
     <div id="loginOverlay" class="login-overlay">
         <div class="login-card glass">
             <div class="login-logo"><div class="login-icon"><i class="fas fa-crown"></i></div><h2>Bot<span>Craft</span></h2></div>
