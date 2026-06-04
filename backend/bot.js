@@ -1,3 +1,14 @@
+// معالجة الأخطاء غير المتوقعة في البوت لمنع انهيار الخادم الرئيسي
+process.on('uncaughtException', (err) => {
+    console.error('[Bot] Uncaught Exception:', err.message);
+    // لا ننهي العملية، فقط نسجل الخطأ
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Bot] Unhandled Rejection:', reason);
+    // لا ننهي العملية، فقط نسجل الخطأ
+});
+
 const mineflayer = require('mineflayer');
 const { pathfinder } = require('mineflayer-pathfinder');
 const Movements = require('mineflayer-pathfinder').Movements;
@@ -20,13 +31,14 @@ let deathCount = 0;
 
 const args = process.argv.slice(2);
 const config = {
-  botName: process.env.BOT_NAME || args[0],
-  minecraftToken: process.env.MC_TOKEN || args[1],
+  username: process.env.BOT_NAME || args[0],
+  uuid: process.env.MC_UUID || 'temp-uuid',
   serverIp: process.env.SERVER_IP || args[2],
   botType: process.env.BOT_TYPE || args[3] || 'afk',
   botId: process.env.BOT_ID || args[4] || 'unknown',
   teamNames: process.env.TEAM_NAMES || args[5] || '',
-  version: process.env.MC_VERSION || args[6] || '1.21.10'
+  version: process.env.MC_VERSION || args[6] || '1.21.10',
+  minecraftToken: process.env.MC_TOKEN || null
 };
 
 if (config.teamNames) teamList = config.teamNames.split(',').map(n => n.trim().toLowerCase());
@@ -151,15 +163,13 @@ function attackNearest() {
 
 function createBot() {
   log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}]`);
-  if (!config.minecraftToken || config.minecraftToken === 'temp-token') {
-    log('⚠️ تنبيه: لم يتم التحقق من حساب ماينكرافت للبوت. قد لا يتمكن من الدخول.');
-  }
+  const auth = config.minecraftToken ? 'microsoft' : 'offline';
   bot = mineflayer.createBot({
     host: config.serverIp,
-    username: config.botName,
-    auth: config.minecraftToken && config.minecraftToken !== 'temp-token' ? 'microsoft' : 'offline',
+    username: config.username,
+    auth: auth,
     version: config.version,
-    session: (config.minecraftToken && config.minecraftToken !== 'temp-token') ? { accessToken: config.minecraftToken, selectedProfile: { id: config.botId, name: config.botName } } : null,
+    session: config.minecraftToken ? { accessToken: config.minecraftToken, selectedProfile: { id: config.uuid, name: config.username } } : null,
     checkTimeoutInterval: 0,
     connectTimeout: 60000,
     keepAlive: true,
