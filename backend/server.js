@@ -6,7 +6,7 @@ const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses, getBotTunnelUrl } = require('./bot-starter');
-const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
+const { getAuthUrl, getTokenFromCode, getUserProfile } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,11 +34,11 @@ app.use(session({
 
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, mc_token TEXT, mc_username TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== تسجيل الدخول العادي ==========
+// ========== تسجيل الدخول ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -53,33 +53,23 @@ app.get('/auth/callback', async (req, res) => {
     if (!code) return res.status(400).send('No code');
     try {
         const { accessToken } = await getTokenFromCode(code);
-        const profile = await getMinecraftProfile(accessToken);
-        const { username, minecraftToken, minecraftProfile } = profile;
-        
-        db.run(`INSERT OR REPLACE INTO users (username, mc_token, mc_username) VALUES (?, ?, ?)`, 
-            [username, minecraftToken, minecraftProfile.name], (err) => {
-            if (err) {
-                console.error('Database error:', err);
-                return res.status(500).send('Database error');
-            }
-            req.session.userId = username;
+        const { username, email } = await getUserProfile(accessToken);
+        db.run(`INSERT OR IGNORE INTO users (username) VALUES (?)`, [username]);
+        db.get(`SELECT id FROM users WHERE username = ?`, [username], (err, row) => {
+            if (err) return res.status(500).send('Database error');
+            req.session.userId = row.id;
             req.session.username = username;
-            req.session.minecraftToken = minecraftToken;
-            req.session.minecraftUsername = minecraftProfile.name;
             req.session.save(() => res.redirect('/'));
         });
     } catch (error) {
-        console.error('Auth callback error:', error);
+        console.error(error);
         res.status(500).send('Auth failed: ' + error.message);
     }
 });
 
 app.get('/api/user', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    res.json({ 
-        username: req.session.username,
-        minecraftUsername: req.session.minecraftUsername || 'غير مرتبط'
-    });
+    res.json({ username: req.session.username });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -104,22 +94,21 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
+// تشغيل البوت - يستخدم حساب مايكروسوفت المسجل عبر auth: 'microsoft'
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    if (!req.session.minecraftToken) {
-        return res.status(400).json({ error: 'no_minecraft_token', message: 'لم يتم ربط حساب ماينكرافت. سجل الخروج ثم سجل الدخول مرة أخرى.' });
-    }
     const { botId } = req.body;
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         if (botProcesses.has(botId)) return res.json({ success: true });
-        startBot(botId, bot.bot_name, req.session.minecraftToken, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+        // نمرر اسم مستخدم الحساب المسجل (بدون توكن) – البوت سيستخدم auth: 'microsoft'
+        startBot(botId, bot.bot_name, req.session.username, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
         res.json({ success: true });
     });
 });
 
-// باقي المسارات (اختصاراً)
+// باقي المسارات (كما هي)
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -170,7 +159,7 @@ app.post('/api/restart-bot', (req, res) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         stopBot(botId);
         setTimeout(() => {
-            startBot(botId, bot.bot_name, req.session.minecraftToken, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+            startBot(botId, bot.bot_name, req.session.username, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
             db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
         }, 1000);
         res.json({ success: true });
@@ -199,7 +188,7 @@ app.get('/camera/:botId', (req, res) => {
         res.send(`
             <html><body style="background:#0a0a1a;color:white;text-align:center;padding:50px;">
             <h2>⏳ جاري إعداد الكاميرا...</h2>
-            <p>قد يستغرق ngrok بضع ثوانٍ. حاول مرة أخرى بعد لحظات.</p>
+            <p>قد يستغرق الاتصال بضع ثوانٍ. حاول مرة أخرى.</p>
             <button onclick="location.reload()">تحديث</button>
             </body></html>
         `);

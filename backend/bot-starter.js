@@ -6,11 +6,10 @@ const botProcesses = new Map();
 const botLogs = new Map();
 const botStats = new Map();
 const botInventory = new Map();
-const botTunnels = new Map(); // تخزين روابط ngrok لكل بوت
+const botTunnels = new Map();
 
 const VIEWER_BASE_PORT = 8080;
 
-// دالة لبدء نفق ngrok لمنفذ الكاميرا
 async function startNgrokForBot(botId, port) {
     try {
         const url = await ngrok.connect({
@@ -26,14 +25,14 @@ async function startNgrokForBot(botId, port) {
     }
 }
 
-function startBot(botId, botName, mcToken, serverIp, botType, teamNames = '', version = '1.21.10') {
+function startBot(botId, botName, msUsername, serverIp, botType, teamNames = '', version = '1.21.10') {
     const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
 
-    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botName, mcToken, serverIp, botType, botId, teamNames, version], {
+    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botName, msUsername, serverIp, botType, botId, teamNames, version], {
         env: {
             ...process.env,
             BOT_NAME: botName,
-            MC_TOKEN: mcToken,
+            MC_USERNAME: msUsername,
             SERVER_IP: serverIp,
             BOT_TYPE: botType,
             BOT_ID: botId,
@@ -67,7 +66,6 @@ function startBot(botId, botName, mcToken, serverIp, botType, teamNames = '', ve
 
     botProcesses.set(botId, botProcess);
     
-    // بدء نفق ngrok للكاميرا بعد ثانية من تشغيل البوت
     setTimeout(() => {
         startNgrokForBot(botId, viewerPort);
     }, 2000);
@@ -82,7 +80,6 @@ function stopBot(botId) {
         p.kill();
         botProcesses.delete(botId);
     }
-    // إغلاق نفق ngrok الخاص بالبوت
     const tunnelUrl = botTunnels.get(botId);
     if (tunnelUrl) {
         ngrok.disconnect(tunnelUrl).catch(console.error);
@@ -91,59 +88,11 @@ function stopBot(botId) {
     return true;
 }
 
-function getBotLogs(botId) {
-    return botLogs.get(botId) || [];
-}
+function getBotLogs(botId) { return botLogs.get(botId) || []; }
+function getBotStats(botId) { return botStats.get(botId) || { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', level: 0, kills: 0, deaths: 0 }; }
+function getBotInventory(botId) { return botInventory.get(botId) || { inventory: [], helmet: 'فارغ', chest: 'فارغ', legs: 'فارغ', boots: 'فارغ', weapon: 'فارغ' }; }
+function deleteBot(botId) { stopBot(botId); botLogs.delete(botId); botStats.delete(botId); botInventory.delete(botId); return true; }
+function sendCommand(botId, command, extra = null) { const p = botProcesses.get(botId); if (p) p.send({ type: 'command', command, extra }); }
+function getBotTunnelUrl(botId) { return botTunnels.get(botId); }
 
-function getBotStats(botId) {
-    return botStats.get(botId) || {
-        health: 20,
-        food: 20,
-        position: '0,0,0',
-        armor: 'لا يوجد',
-        weapon: 'لا يوجد',
-        level: 0,
-        kills: 0,
-        deaths: 0
-    };
-}
-
-function getBotInventory(botId) {
-    return botInventory.get(botId) || {
-        inventory: [],
-        helmet: 'فارغ',
-        chest: 'فارغ',
-        legs: 'فارغ',
-        boots: 'فارغ',
-        weapon: 'فارغ'
-    };
-}
-
-function deleteBot(botId) {
-    stopBot(botId);
-    botLogs.delete(botId);
-    botStats.delete(botId);
-    botInventory.delete(botId);
-    return true;
-}
-
-function sendCommand(botId, command, extra = null) {
-    const p = botProcesses.get(botId);
-    if (p) p.send({ type: 'command', command, extra });
-}
-
-function getBotTunnelUrl(botId) {
-    return botTunnels.get(botId);
-}
-
-module.exports = {
-    startBot,
-    stopBot,
-    getBotLogs,
-    getBotStats,
-    getBotInventory,
-    sendCommand,
-    deleteBot,
-    botProcesses,
-    getBotTunnelUrl
-};
+module.exports = { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses, getBotTunnelUrl };

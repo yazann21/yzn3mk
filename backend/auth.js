@@ -1,5 +1,4 @@
 const { ConfidentialClientApplication } = require('@azure/msal-node');
-const { Authflow, Titles } = require('prismarine-auth');
 const axios = require('axios');
 
 const msalConfig = {
@@ -13,7 +12,7 @@ const msalClient = new ConfidentialClientApplication(msalConfig);
 
 async function getAuthUrl() {
     const authUrlParams = {
-        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],  // تم إزالة XboxLive.signin
+        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
         redirectUri: process.env.REDIRECT_URI,
     };
     return await msalClient.getAuthCodeUrl(authUrlParams);
@@ -28,35 +27,19 @@ async function getTokenFromCode(code) {
     return await msalClient.acquireTokenByCode(tokenRequest);
 }
 
-async function getMinecraftProfile(accessToken) {
+async function getUserProfile(accessToken) {
     try {
-        // 1. الحصول على معلومات مستخدم Microsoft
         const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
-        
-        // 2. استخدام AccessToken للحصول على توكن ماينكرافت عبر prismarine-auth
-        const flow = new Authflow(`user_${username}`, './ms-cache', {
-            authTitle: Titles.MinecraftJava,
-            deviceType: 'Win32',
-            flow: 'msal'
-        });
-        const minecraftToken = await flow.getMinecraftJavaToken({ accessToken });
-        
-        console.log(`✅ مستخدم مايكروسوفت: ${username}`);
-        console.log(`✅ حساب ماينكرافت: ${minecraftToken.profile.name} (UUID: ${minecraftToken.profile.id})`);
-        
-        return {
-            username: username,
-            minecraftToken: minecraftToken.token,
-            minecraftProfile: minecraftToken.profile
-        };
+        console.log(`✅ تسجيل دخول: ${username}`);
+        return { username, email };
     } catch (error) {
-        console.error('❌ فشل الحصول على توكن ماينكرافت:', error.message);
+        console.error('❌ فشل جلب الملف الشخصي:', error.message);
         throw error;
     }
 }
 
-module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };
+module.exports = { getAuthUrl, getTokenFromCode, getUserProfile };
