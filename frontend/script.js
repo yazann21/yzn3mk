@@ -306,7 +306,8 @@ function renderBots() {
             <div class="bot-actions" onclick="event.stopPropagation()">
                 ${b.status === 'online' ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>` : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`}
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
-                <button class="btn-verify" onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
+                
+ onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
                 <button class="btn-delete" onclick="deleteBot(${b.id})"><i class="fas fa-trash"></i> حذف</button>
@@ -652,7 +653,7 @@ window.sendChatMessage = sendChatMessage;
 window.refreshInventory = refreshInventory;
 window.openBotControl = openBotControl;
 window.stopBot = stopBot;
-window.startBot = startBot;
+window.startBot = startBot;	
 window.restartBot = restartBot;
 window.deleteBot = deleteBot;
 window.openEditModal = openEditModal;
