@@ -13,7 +13,7 @@ const msalClient = new ConfidentialClientApplication(msalConfig);
 
 async function getAuthUrl() {
     const authUrlParams = {
-        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
+        scopes: ['User.Read', 'offline_access', 'openid', 'profile', 'XboxLive.signin'],
         redirectUri: process.env.REDIRECT_URI,
     };
     return await msalClient.getAuthCodeUrl(authUrlParams);
@@ -22,7 +22,7 @@ async function getAuthUrl() {
 async function getTokenFromCode(code) {
     const tokenRequest = {
         code: code,
-        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
+        scopes: ['User.Read', 'offline_access', 'openid', 'profile', 'XboxLive.signin'],
         redirectUri: process.env.REDIRECT_URI,
     };
     return await msalClient.acquireTokenByCode(tokenRequest);
@@ -30,15 +30,31 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
     try {
+        // 1. الحصول على معلومات مستخدم Microsoft
         const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
-        console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
-        return { username };
+        
+        // 2. استخدام AccessToken للحصول على توكن ماينكرافت عبر prismarine-auth
+        const flow = new Authflow(`user_${username}`, './ms-cache', {
+            authTitle: Titles.MinecraftJava,
+            deviceType: 'Win32',
+            flow: 'msal'
+        });
+        const minecraftToken = await flow.getMinecraftJavaToken({ accessToken });
+        
+        console.log(`✅ مستخدم مايكروسوفت: ${username}`);
+        console.log(`✅ حساب ماينكرافت: ${minecraftToken.profile.name} (UUID: ${minecraftToken.profile.id})`);
+        
+        return {
+            username: username,
+            minecraftToken: minecraftToken.token,
+            minecraftProfile: minecraftToken.profile
+        };
     } catch (error) {
-        console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
+        console.error('❌ فشل الحصول على توكن ماينكرافت:', error.message);
         throw error;
     }
 }
