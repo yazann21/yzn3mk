@@ -1,4 +1,4 @@
-\const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { ConfidentialClientApplication } = require('@azure/msal-node');
 const { Authflow, Titles } = require('prismarine-auth');
 const axios = require('axios');
 
