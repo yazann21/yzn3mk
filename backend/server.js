@@ -10,14 +10,14 @@ const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 
 const app = express();
-const PORT = process.env.PORT || 3001; // تغيير المنفذ إلى 3001 لتجنب التعارض
+const PORT = process.env.PORT || 3000; // تأكد من أنه 3000
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// تخزين الجلسات في SQLite (حل دائم)
+// تخزين الجلسات في SQLite
 app.use(session({
   store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
   secret: process.env.SESSION_SECRET || 'my_secret_key_12345',
@@ -42,6 +42,7 @@ db.serialize(() => {
 app.get('/auth/login', async (req, res) => {
   try {
     const url = await getAuthUrl();
+    console.log('✅ Generated auth URL:', url);
     res.json({ url });
   } catch (error) {
     console.error('Error in /auth/login:', error);
@@ -53,29 +54,35 @@ app.get('/auth/login', async (req, res) => {
 app.get('/auth/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).send('No code provided');
+  console.log('🔑 Received auth code');
 
   try {
     const { accessToken } = await getTokenFromCode(code);
+    console.log('✅ Access token obtained');
+    
     const { uuid, username, minecraftToken, isRealMinecraft } = await getMinecraftProfile(accessToken);
+    console.log(`✅ User profile: ${username}`);
 
     db.run(`INSERT INTO users (microsoft_id, username, uuid, minecraft_token, is_real) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
       [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0],
       function(err) {
         if (err) {
-          console.error(err);
+          console.error('❌ Database error:', err);
           return res.status(500).send('Database error');
         }
         req.session.userId = uuid;
         req.session.username = username;
         req.session.minecraftToken = minecraftToken;
         req.session.isRealMinecraft = isRealMinecraft;
-        req.session.save(() => {
+        req.session.save((err) => {
+          if (err) console.error('❌ Session save error:', err);
+          console.log('✅ Session saved, redirecting to /');
           res.redirect('/');
         });
       });
   } catch (error) {
-    console.error('Auth callback error:', error);
+    console.error('❌ Auth callback error:', error);
     res.status(500).send('Authentication failed: ' + error.message);
   }
 });
@@ -94,7 +101,7 @@ app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// باقي مسارات API
+// باقي مسارات API (كما هي، بدون تغيير)
 app.get('/api/bots', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
