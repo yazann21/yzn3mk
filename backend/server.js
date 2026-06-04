@@ -12,18 +12,29 @@ const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({ origin: true, credentials: true }));
+// إعدادات CORS مهمة جدًا لـ Render
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
+// إعدادات الجلسة - مهمة لـ Render (secure: true, sameSite: 'none')
 app.use(session({
     store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
-    secret: process.env.SESSION_SECRET || 'secret',
+    secret: process.env.SESSION_SECRET || 'super_secret_key_change_this',
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: true, httpOnly: true, sameSite: 'none', maxAge: 7 * 24 * 60 * 60 * 1000 }
+    cookie: {
+        secure: true,      // لأن Render يستخدم HTTPS
+        httpOnly: true,
+        sameSite: 'none',  // ضروري للـ cross-origin
+        maxAge: 1000 * 60 * 60 * 24 * 7
+    }
 }));
 
+// قاعدة البيانات
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, email TEXT UNIQUE, password TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
@@ -34,31 +45,50 @@ db.serialize(() => {
 app.post('/api/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !email || !password) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
-    const hashed = await bcrypt.hash(password, 10);
-    db.run(`INSERT INTO users (username, email, password) VALUES (?, ?, ?)`, [username, email, hashed], function(err) {
-        if (err) return res.status(400).json({ error: 'اسم المستخدم أو البريد موجود' });
-        req.session.userId = this.lastID;
-        req.session.username = username;
-        res.json({ success: true, username });
-    });
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        db.run(`INSERT INTO users (username, email, password) VALUES (?, ?, ?)`, [username, email, hashedPassword], function(err) {
+            if (err) {
+                if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'اسم المستخدم أو البريد موجود مسبقاً' });
+                return res.status(500).json({ error: err.message });
+            }
+            req.session.userId = this.lastID;
+            req.session.username = username;
+            req.session.email = email;
+            res.json({ success: true, username, email });
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // تسجيل الدخول
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'البريد وكلمة المرور مطلوبة' });
     db.get(`SELECT * FROM users WHERE email = ?`, [email], async (err, user) => {
-        if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: 'بيانات غير صحيحة' });
+        if (err || !user) return res.status(401).json({ error: 'بيانات غير صحيحة' });
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) return res.status(401).json({ error: 'بيانات غير صحيحة' });
         req.session.userId = user.id;
         req.session.username = user.username;
-        res.json({ success: true, username: user.username });
+        req.session.email = user.email;
+        res.json({ success: true, username: user.username, email: user.email });
     });
 });
 
+// التحقق من حالة المستخدم (أهم نقطة)
 app.get('/api/user', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    res.json({ username: req.session.username });
+    if (!req.session.userId) {
+        return res.status(401).json({ error: 'Not logged in' });
+    }
+    res.json({
+        username: req.session.username,
+        email: req.session.email || ''
+    });
 });
 
+// تسجيل الخروج
 app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
@@ -81,14 +111,19 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// التحقق من حساب البوت (رابط مايكروسوفت)
+// التحقق من حساب البوت
 const botFlows = new Map();
 app.get('/api/bot-verify/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const botId = parseInt(req.params.botId);
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], async (err, bot) => {
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
-        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', { authTitle: 'Minecraft', deviceType: 'Win32', flow: 'msal', redirectUri: `${process.env.REDIRECT_URI}/auth/bot-callback` });
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            authTitle: 'Minecraft',
+            deviceType: 'Win32',
+            flow: 'msal',
+            redirectUri: `${process.env.REDIRECT_URI || 'https://yzn3mk.onrender.com'}/auth/bot-callback`
+        });
         const url = await flow.getAuthCodeUrl();
         botFlows.set(botId, flow);
         res.json({ url });
@@ -96,9 +131,8 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
 });
 
 app.get('/auth/bot-callback', async (req, res) => {
-    const { code, state } = req.query;
+    const { code } = req.query;
     if (!code) return res.status(400).send('No code');
-    // نبحث عن البوت المتوقع (يمكن تحسينه باستخدام state)
     let botId = null;
     let flow = null;
     for (let [id, f] of botFlows.entries()) { flow = f; botId = id; botFlows.delete(id); break; }
@@ -106,10 +140,10 @@ app.get('/auth/bot-callback', async (req, res) => {
     await flow.authFlow(code);
     const token = await flow.getMinecraftJavaToken();
     db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [token.token, botId]);
-    res.send('<h2>✅ تم التحقق! يمكنك إغلاق هذه النافذة</h2><script>setTimeout(()=>window.close(),2000)</script>');
+    res.send('<h2 style="color:white; background:#0a0a1a; text-align:center; padding:50px;">✅ تم التحقق! يمكنك إغلاق هذه النافذة</h2><script>setTimeout(()=>window.close(),3000)</script>');
 });
 
-// تشغيل البوت (يستخدم التوكن المخزن)
+// تشغيل البوت
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -123,7 +157,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, tasks, camera) كما في السابق مع credentials
+// باقي المسارات (اختصاراً)
 app.post('/api/stop-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; if (stopBot(botId)) db.run('UPDATE bots SET status = ? WHERE id = ?', ['stopped', botId]); res.json({ success: true }); });
 app.delete('/api/delete-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId } = req.body; stopBot(botId); deleteBot(botId); db.run('DELETE FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId]); res.json({ success: true }); });
 app.put('/api/update-bot', (req, res) => { if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' }); const { botId, botName, botType, serverIp, teamNames, version } = req.body; stopBot(botId); db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ?, status = 'stopped' WHERE id = ? AND user_id = ?`, [botName, botType, serverIp, teamNames || '', version || '1.21.10', botId, req.session.userId]); res.json({ success: true }); });
