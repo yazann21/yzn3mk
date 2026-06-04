@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - مع زر تحقق (Device Code Flow)
+// BOT CRAFT v4.0 - مع زر تحقق يعمل (Device Code Flow)
 // ========================================
 
 let currentUser = null;
@@ -319,14 +319,13 @@ function renderBots() {
     `).join('');
 }
 
-// دالة التحقق من البوت (تظهر رابط ورمز في سجل Render)
+// ========== دالة التحقق من البوت (تظهر الرابط والرمز) ==========
 function verifyBotAccount(botId) {
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
             if (data.verification_uri && data.user_code) {
-                const msg = `🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في أي متصفح، سجل الدخول بحساب ماينكرافت الحقيقي، وأدخل الرمز.`;
-                alert(msg);
+                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في أي متصفح، سجل الدخول بحساب ماينكرافت الحقيقي، وأدخل الرمز.`);
             } else if (data.message) {
                 alert(data.message);
             } else if (data.error) {
@@ -334,10 +333,11 @@ function verifyBotAccount(botId) {
             }
         })
         .catch(err => {
-            console.error(err);
+            console.error('Verify error:', err);
             alert('حدث خطأ أثناء محاولة التحقق');
         });
 }
+
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
         method: 'POST',
