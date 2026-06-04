@@ -1,6 +1,5 @@
 // ========================================
-// BOT CRAFT - PROFESSIONAL SCRIPT v3.1
-// مع دعم الجلسات الدائمة والتحقق من حساب ماينكرافت
+// BOT CRAFT - v3.2 (جلسات دائمة مع ملفات)
 // ========================================
 
 let currentUser = null;
@@ -16,7 +15,7 @@ let globalColor = '#7c3aed';
 let activityChart = null;
 let distributionChart = null;
 
-// جميع الإصدارات (60 إصداراً)
+// جميع الإصدارات
 const allVersions = [
     '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21',
     '1.20.4', '1.20.3', '1.20.2', '1.20.1', '1.20', '1.19.4', '1.19.2', '1.19', '1.18.2', '1.18.1', '1.18',
@@ -25,7 +24,6 @@ const allVersions = [
     '1.11.2', '1.11.1', '1.11', '1.10.2', '1.10.1', '1.10', '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9', '1.8.9', '1.8.8'
 ];
 
-// إصدارات السيرفرات الخاصة
 const specialServerVersions = {
     'hypixel.net': '1.8.9',
     'donutsmp.net': '1.21.10',
@@ -44,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
     checkAuth();
 });
 
-// ---------- التحقق من المصادقة عبر الجلسة ----------
+// ---------- التحقق من المصادقة ----------
 function checkAuth() {
     fetch('/api/user')
         .then(res => {
@@ -78,7 +76,6 @@ function showApp() {
     document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
     document.getElementById('welcomeUsername').innerHTML = currentUser.username;
     
-    // عرض حالة حساب ماينكرافت
     const mcStatus = document.getElementById('mcAccountStatus');
     if (mcStatus) {
         if (currentUser.isRealMinecraft) {
@@ -98,42 +95,30 @@ function logout() {
     });
 }
 
-// ---------- تهيئة الأحداث ----------
+// ---------- باقي دوال الموقع (نفس ما كانت مع تغيير fetch URLs) ----------
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
-    
     document.getElementById('loginMicrosoftBtn')?.addEventListener('click', () => {
-        fetch('/auth/login')
-            .then(res => res.json())
-            .then(data => { if (data.url) window.location.href = data.url; });
+        fetch('/auth/login').then(res => res.json()).then(data => { if (data.url) window.location.href = data.url; });
     });
-    
     document.getElementById('createBotType')?.addEventListener('change', toggleTeamField);
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
-        const teamRow = document.getElementById('editTeamGroup');
-        if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
+        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
     });
-    
     document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
-    
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            const page = link.dataset.page;
-            navigateTo(page);
+            navigateTo(link.dataset.page);
         });
     });
-    
     document.getElementById('mobileMenuToggle')?.addEventListener('click', () => {
         document.querySelector('.glass-sidebar').classList.toggle('open');
     });
-    
     document.getElementById('createBotFloatBtn')?.addEventListener('click', () => navigateTo('create'));
-    
     document.getElementById('filterStatus')?.addEventListener('change', () => renderBots());
     document.getElementById('filterType')?.addEventListener('change', () => renderBots());
     document.getElementById('botSearch')?.addEventListener('input', () => renderBots());
-    
     document.getElementById('darkModeToggle')?.addEventListener('change', (e) => {
         if (!e.target.checked) {
             document.body.style.background = '#f0f0f0';
@@ -143,14 +128,12 @@ function initEventListeners() {
             document.body.style.color = '#ffffff';
         }
     });
-    
     setInterval(() => {
-        if (document.getElementById('dashboardPage').classList.contains('active')) loadDashboard();
-        if (document.getElementById('botsPage').classList.contains('active')) loadBots();
+        if (document.getElementById('dashboardPage')?.classList.contains('active')) loadDashboard();
+        if (document.getElementById('botsPage')?.classList.contains('active')) loadBots();
     }, 15000);
 }
 
-// ---------- التنقل بين الصفحات ----------
 function navigateTo(page) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById(`${page}Page`).classList.add('active');
@@ -163,14 +146,13 @@ function navigateTo(page) {
     if (page === 'analytics') loadAnalytics();
 }
 
-// ---------- تحديث الإصدارات حسب السيرفر ----------
 function updateVersionsForServer(serverIp, selectId) {
     const serverLower = serverIp.toLowerCase();
     const versionSelect = document.getElementById(selectId);
     if (!versionSelect) return;
     for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
         if (serverLower.includes(key)) {
-            versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion} (مطلوب لهذا السيرفر)</option>`;
+            versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion}</option>`;
             showServerWarning(serverLower);
             return;
         }
@@ -189,111 +171,62 @@ function showServerWarning(serverName) {
         warning.style.borderLeftColor = '#ef4444';
         document.querySelector('#createPage .form-container')?.appendChild(warning);
     }
-    if (serverName.includes('hypixel')) warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> سيرفر Hypixel يدعم فقط الإصدار 1.8.9 للبوتات';
-    else if (serverName.includes('donut')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم الإصدارات 1.21, 1.21.1, 1.21.2';
+    if (serverName.includes('hypixel')) warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Hypixel يدعم 1.8.9 فقط';
+    else if (serverName.includes('donut')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم 1.21';
 }
 
 function hideServerWarning() { const w = document.getElementById('serverWarning'); if (w) w.remove(); }
+function toggleTeamField() { document.getElementById('teamInputGroup').style.display = document.getElementById('createBotType').value === 'hunter' ? 'block' : 'none'; }
 
-function toggleTeamField() {
-    const botType = document.getElementById('createBotType').value;
-    const teamGroup = document.getElementById('teamInputGroup');
-    if (teamGroup) teamGroup.style.display = botType === 'hunter' ? 'block' : 'none';
-}
-
-// ---------- الرسوم البيانية ----------
 function initCharts() {
     const ctx1 = document.getElementById('activityChart')?.getContext('2d');
-    if (ctx1) {
-        activityChart = new Chart(ctx1, {
-            type: 'line',
-            data: { labels: ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'], datasets: [{ label: 'نشاط البوتات', data: [12, 19, 15, 17, 14, 20, 25], borderColor: globalColor, backgroundColor: globalColor + '20', borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: globalColor, pointBorderColor: '#fff', pointRadius: 4, pointHoverRadius: 6 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#a0a0c0' } } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0c0' } }, x: { grid: { display: false }, ticks: { color: '#a0a0c0' } } } }
-        });
-    }
+    if (ctx1) activityChart = new Chart(ctx1, { type: 'line', data: { labels: ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'], datasets: [{ label: 'نشاط البوتات', data: [12, 19, 15, 17, 14, 20, 25], borderColor: globalColor, backgroundColor: globalColor + '20', borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: globalColor, pointBorderColor: '#fff' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#a0a0c0' } } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0c0' } }, x: { grid: { display: false }, ticks: { color: '#a0a0c0' } } } } });
     const ctx2 = document.getElementById('distributionChart')?.getContext('2d');
-    if (ctx2) {
-        distributionChart = new Chart(ctx2, {
-            type: 'doughnut',
-            data: { labels: ['مأفك', 'صياد', 'جبان'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#a855f7', '#3b82f6', '#f59e0b'], borderWidth: 0 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0c0' } } } }
-        });
-    }
+    if (ctx2) distributionChart = new Chart(ctx2, { type: 'doughnut', data: { labels: ['مأفك', 'صياد', 'جبان'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#a855f7', '#3b82f6', '#f59e0b'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0c0' } } } } });
 }
-
 function initColorPicker() {
     document.querySelectorAll('.color-option').forEach(opt => {
         opt.addEventListener('click', () => {
-            const color = opt.dataset.color;
-            globalColor = color;
-            document.documentElement.style.setProperty('--primary', color);
-            document.documentElement.style.setProperty('--primary-dark', color);
+            globalColor = opt.dataset.color;
+            document.documentElement.style.setProperty('--primary', globalColor);
+            document.documentElement.style.setProperty('--primary-dark', globalColor);
             document.querySelectorAll('.color-option').forEach(o => o.classList.remove('active'));
             opt.classList.add('active');
-            if (activityChart) {
-                activityChart.data.datasets[0].borderColor = color;
-                activityChart.data.datasets[0].backgroundColor = color + '20';
-                activityChart.update();
-            }
+            if (activityChart) { activityChart.data.datasets[0].borderColor = globalColor; activityChart.data.datasets[0].backgroundColor = globalColor + '20'; activityChart.update(); }
         });
     });
 }
 
-// ---------- تحميل لوحة التحكم ----------
 function loadDashboard() {
-    fetch('/api/bots')
-        .then(res => res.json())
-        .then(data => {
-            const bots = data.bots || [];
-            document.getElementById('statTotalBots').innerHTML = bots.length;
-            document.getElementById('statOnlineBots').innerHTML = bots.filter(b => b.status === 'online').length;
-            document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
-            document.getElementById('botsCountNav').innerHTML = bots.length;
-            if (distributionChart) {
-                const afk = bots.filter(b => b.bot_type === 'afk').length;
-                const hunter = bots.filter(b => b.bot_type === 'hunter').length;
-                const coward = bots.filter(b => b.bot_type === 'coward').length;
-                distributionChart.data.datasets[0].data = [afk, hunter, coward];
-                distributionChart.update();
-            }
-            const recentHtml = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('');
-            document.getElementById('recentActivities').innerHTML = recentHtml || '<div class="activity-skeleton">لا توجد نشاطات</div>';
-        });
+    fetch('/api/bots').then(res => res.json()).then(data => {
+        const bots = data.bots || [];
+        document.getElementById('statTotalBots').innerHTML = bots.length;
+        document.getElementById('statOnlineBots').innerHTML = bots.filter(b => b.status === 'online').length;
+        document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
+        document.getElementById('botsCountNav').innerHTML = bots.length;
+        if (distributionChart) {
+            distributionChart.data.datasets[0].data = [bots.filter(b => b.bot_type === 'afk').length, bots.filter(b => b.bot_type === 'hunter').length, bots.filter(b => b.bot_type === 'coward').length];
+            distributionChart.update();
+        }
+        document.getElementById('recentActivities').innerHTML = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('') || '<div class="activity-skeleton">لا توجد نشاطات</div>';
+    });
 }
 
-// ---------- تحميل البوتات ----------
-function loadBots() {
-    fetch('/api/bots')
-        .then(res => res.json())
-        .then(data => {
-            currentBots = data.bots || [];
-            renderBots();
-        });
-}
-
+function loadBots() { fetch('/api/bots').then(res => res.json()).then(data => { currentBots = data.bots || []; renderBots(); }); }
 function renderBots() {
     const filterStatus = document.getElementById('filterStatus')?.value || 'all';
     const filterType = document.getElementById('filterType')?.value || 'all';
     const searchTerm = document.getElementById('botSearch')?.value?.toLowerCase() || '';
-    let filtered = currentBots;
-    if (filterStatus !== 'all') filtered = filtered.filter(b => b.status === filterStatus);
-    if (filterType !== 'all') filtered = filtered.filter(b => b.bot_type === filterType);
-    if (searchTerm) filtered = filtered.filter(b => b.bot_name.toLowerCase().includes(searchTerm));
+    let filtered = currentBots.filter(b => (filterStatus === 'all' || b.status === filterStatus) && (filterType === 'all' || b.bot_type === filterType) && (b.bot_name.toLowerCase().includes(searchTerm)));
     const container = document.getElementById('botsGrid');
     if (!container) return;
-    if (filtered.length === 0) {
-        container.innerHTML = '<div class="activity-skeleton" style="padding:60px">🤖 لا توجد بوتات تطابق البحث</div>';
-        return;
-    }
+    if (filtered.length === 0) { container.innerHTML = '<div class="activity-skeleton">🤖 لا توجد بوتات</div>'; return; }
     container.innerHTML = filtered.map(b => `
         <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
             <div class="bot-header"><div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div><div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div></div>
-            <div class="bot-details"><div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div><div><i class="fas fa-tag"></i> ${getBotTypeText(b.bot_type)}</div><div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div><div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div></div>
+            <div class="bot-details"><div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div><div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div><div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div><div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div></div>
             <div class="bot-actions" onclick="event.stopPropagation()">
-                ${b.status === 'online' 
-                    ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
-                    : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`
-                }
+                ${b.status === 'online' ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>` : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`}
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
@@ -303,134 +236,24 @@ function renderBots() {
     `).join('');
 }
 
-function getBotTypeText(type) { const types = { 'afk': 'مأفك', 'hunter': 'صياد', 'coward': 'جبان' }; return types[type] || type; }
-
-// ---------- عمليات البوت ----------
 function startBot(id) {
-    if (!currentUser.isRealMinecraft) {
-        const confirmStart = confirm('⚠️ تنبيه: حساب مايكروسوفت الخاص بك غير مرتبط بحساب ماينكرافت حقيقي.\n\nقد لا يتمكن البوت من الدخول إلى السيرفرات التي تتطلب مصادقة.\n\nهل تريد المتابعة على مسؤوليتك؟\n\nإذا كنت تريد ربط حساب ماينكرافت حقيقي، سجل الخروج ثم سجل الدخول مرة أخرى.');
-        if (!confirmStart) return;
-    }
-    fetch('/api/start-cloud-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botId: parseInt(id) })
-    }).then(res => res.json()).then(data => {
-        if (data.error === 'need_minecraft_auth') {
-            alert('⚠️ لا يمكن تشغيل البوت لأن حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي.\n\nيرجى تسجيل الخروج ثم تسجيل الدخول مرة أخرى بحساب مايكروسوفت الذي يملك Minecraft Java Edition.');
-            return;
-        }
-        loadBots();
-        loadDashboard();
-    }).catch(err => console.error(err));
+    if (!currentUser.isRealMinecraft && !confirm('⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت. قد لا يعمل البوت. تابع؟')) return;
+    fetch('/api/start-cloud-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId: parseInt(id) }) }).then(res => res.json()).then(data => { if (data.error === 'need_minecraft_auth') alert('⚠️ لا يمكن تشغيل البوت: حساب مايكروسوفت غير مرتبط بماينكرافت حقيقي.'); else { loadBots(); loadDashboard(); } });
 }
-
-function stopBot(id) {
-    fetch('/api/stop-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botId: parseInt(id) })
-    }).then(() => { loadBots(); loadDashboard(); });
-}
-
-function restartBot(id) {
-    fetch('/api/restart-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botId: parseInt(id) })
-    }).then(() => { setTimeout(() => { loadBots(); loadDashboard(); }, 2000); });
-}
-
-function deleteBot(id) {
-    if (confirm('هل أنت متأكد من حذف هذا البوت نهائياً؟')) {
-        fetch('/api/delete-bot', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ botId: parseInt(id) })
-        }).then(() => { loadBots(); loadDashboard(); });
-    }
-}
-
-// ---------- نافذة التعديل ----------
-function openEditModal(id) {
-    const bot = currentBots.find(b => b.id === id);
-    if (!bot) return;
-    document.getElementById('editBotId').value = bot.id;
-    document.getElementById('editBotName').value = bot.bot_name;
-    document.getElementById('editBotType').value = bot.bot_type;
-    document.getElementById('editServerIp').value = bot.server_ip;
-    document.getElementById('editTeamNames').value = bot.team_names || '';
-    const editVersionSelect = document.getElementById('editVersion');
-    editVersionSelect.innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
-    document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
-    document.getElementById('editModal').style.display = 'flex';
-}
-
+function stopBot(id) { fetch('/api/stop-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId: parseInt(id) }) }).then(() => { loadBots(); loadDashboard(); }); }
+function restartBot(id) { fetch('/api/restart-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId: parseInt(id) }) }).then(() => setTimeout(() => { loadBots(); loadDashboard(); }, 2000)); }
+function deleteBot(id) { if (confirm('حذف البوت؟')) fetch('/api/delete-bot', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId: parseInt(id) }) }).then(() => { loadBots(); loadDashboard(); }); }
+function openEditModal(id) { const bot = currentBots.find(b => b.id === id); if (!bot) return; document.getElementById('editBotId').value = bot.id; document.getElementById('editBotName').value = bot.bot_name; document.getElementById('editBotType').value = bot.bot_type; document.getElementById('editServerIp').value = bot.server_ip; document.getElementById('editTeamNames').value = bot.team_names || ''; document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join(''); document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none'; document.getElementById('editModal').style.display = 'flex'; }
 function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
-
-function saveEditBot() {
-    const botId = parseInt(document.getElementById('editBotId').value);
-    const botName = document.getElementById('editBotName').value;
-    const botType = document.getElementById('editBotType').value;
-    const serverIp = document.getElementById('editServerIp').value;
-    const teamNames = document.getElementById('editTeamNames').value;
-    const version = document.getElementById('editVersion').value;
-    fetch('/api/update-bot', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botId, botName, botType, serverIp, teamNames, version })
-    }).then(() => { closeEditModal(); loadBots(); });
-}
-
-// ---------- إنشاء بوت ----------
-document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const botName = document.getElementById('createBotName').value;
-    const botType = document.getElementById('createBotType').value;
-    const serverIp = document.getElementById('createServerIp').value;
-    const teamNames = document.getElementById('createTeamNames').value;
-    const version = document.getElementById('createVersion').value;
-    if (!botName || !serverIp) return alert('الرجاء تعبئة جميع الحقول المطلوبة');
-    fetch('/api/create-bot-cloud', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ botName, botType, serverIp, teamNames, version })
-    }).then(res => res.json()).then(data => {
-        if (data.error) alert('خطأ: ' + data.error);
-        else { alert('✓ تم إنشاء البوت بنجاح!'); document.getElementById('createBotForm').reset(); navigateTo('bots'); }
-    });
-});
-
-// ---------- كاميرا ----------
+function saveEditBot() { fetch('/api/update-bot', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId: parseInt(document.getElementById('editBotId').value), botName: document.getElementById('editBotName').value, botType: document.getElementById('editBotType').value, serverIp: document.getElementById('editServerIp').value, teamNames: document.getElementById('editTeamNames').value, version: document.getElementById('editVersion').value }) }).then(() => { closeEditModal(); loadBots(); }); }
+document.getElementById('createBotForm')?.addEventListener('submit', (e) => { e.preventDefault(); fetch('/api/create-bot-cloud', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botName: document.getElementById('createBotName').value, botType: document.getElementById('createBotType').value, serverIp: document.getElementById('createServerIp').value, teamNames: document.getElementById('createTeamNames').value, version: document.getElementById('createVersion').value }) }).then(res => res.json()).then(data => { if (data.error) alert('خطأ: ' + data.error); else { alert('تم إنشاء البوت'); navigateTo('bots'); } }); });
 function openCameraViewer(botId) { window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800'); }
 function closeCameraModal() { document.getElementById('cameraModal').style.display = 'none'; }
-
-// ---------- السجلات ----------
-function openLogs(id) {
-    currentLogsBotId = id;
-    document.getElementById('logsModal').style.display = 'flex';
-    if (logsInterval) clearInterval(logsInterval);
-    const fetchLogs = () => { fetch(`/api/bot-logs/${id}`).then(res => res.json()).then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); }); };
-    fetchLogs();
-    logsInterval = setInterval(fetchLogs, 3000);
-}
+function openLogs(id) { currentLogsBotId = id; document.getElementById('logsModal').style.display = 'flex'; if (logsInterval) clearInterval(logsInterval); const fetchLogs = () => { fetch(`/api/bot-logs/${id}`).then(res => res.json()).then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); }); }; fetchLogs(); logsInterval = setInterval(fetchLogs, 3000); }
 function closeLogs() { if (logsInterval) clearInterval(logsInterval); document.getElementById('logsModal').style.display = 'none'; }
 function refreshLogs() { if (currentLogsBotId) fetch(`/api/bot-logs/${currentLogsBotId}`).then(res => res.json()).then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); }); }
 function clearLogs() { if (currentLogsBotId) fetch(`/api/clear-logs/${currentLogsBotId}`, { method: 'POST' }).catch(console.error); refreshLogs(); }
-
-// ---------- التحكم المتقدم ----------
-function openBotControl(id, name) {
-    controlBotId = id;
-    document.getElementById('controlTitle').innerHTML = `<i class="fas fa-gamepad"></i> التحكم بـ ${name}`;
-    document.getElementById('controlCameraFrame').src = `/camera/${id}`;
-    document.getElementById('controlModal').style.display = 'flex';
-    if (statsInterval) clearInterval(statsInterval);
-    if (inventoryInterval) clearInterval(inventoryInterval);
-    statsInterval = setInterval(() => fetchBotStats(id), 2000);
-    inventoryInterval = setInterval(() => fetchInventory(id), 3000);
-    fetchBotStats(id);
-    fetchInventory(id);
-}
+function openBotControl(id, name) { controlBotId = id; document.getElementById('controlTitle').innerHTML = `🎮 التحكم بـ ${name}`; document.getElementById('controlCameraFrame').src = `/camera/${id}`; document.getElementById('controlModal').style.display = 'flex'; if (statsInterval) clearInterval(statsInterval); if (inventoryInterval) clearInterval(inventoryInterval); statsInterval = setInterval(() => fetchBotStats(id), 2000); inventoryInterval = setInterval(() => fetchInventory(id), 3000); fetchBotStats(id); fetchInventory(id); }
 function closeBotControl() { if (statsInterval) clearInterval(statsInterval); if (inventoryInterval) clearInterval(inventoryInterval); document.getElementById('controlModal').style.display = 'none'; controlBotId = null; }
 function fetchBotStats(id) { fetch(`/api/bot-stats/${id}`).then(res => res.json()).then(data => { document.getElementById('statHealth').innerHTML = data.health || '20'; document.getElementById('statFood').innerHTML = data.food || '20'; document.getElementById('statPosition').innerHTML = data.position || '0,0,0'; document.getElementById('statArmor').innerHTML = data.armor || 'لا يوجد'; document.getElementById('statWeapon').innerHTML = data.weapon || 'لا يوجد'; document.getElementById('statLevel').innerHTML = data.level || '0'; document.getElementById('detailLevel').innerHTML = data.level || '0'; document.getElementById('detailXp').innerHTML = data.xp || '0'; document.getElementById('detailKills').innerHTML = data.kills || '0'; document.getElementById('detailDeaths').innerHTML = data.deaths || '0'; }).catch(() => {}); }
 function fetchInventory(id) { fetch(`/api/bot-inventory/${id}`).then(res => res.json()).then(data => { if (data.inventory) { currentInventory = data.inventory; renderInventory(); document.getElementById('invHelmet').innerHTML = data.helmet || 'فارغ'; document.getElementById('invChest').innerHTML = data.chest || 'فارغ'; document.getElementById('invLegs').innerHTML = data.legs || 'فارغ'; document.getElementById('invBoots').innerHTML = data.boots || 'فارغ'; document.getElementById('invWeapon').innerHTML = data.weapon || 'فارغ'; } }).catch(() => {}); }
@@ -439,25 +262,14 @@ function selectSlot(slot) { selectedSlot = slot; renderInventory(); }
 function refreshInventory() { if (controlBotId) fetchInventory(controlBotId); }
 function sendCommand(cmd, extra = null) { if (!controlBotId) return; fetch('/api/bot-command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ botId: controlBotId, command: cmd, extra }) }); }
 function sendChatMessage() { const msg = document.getElementById('chatInput')?.value; if (!msg) return; sendCommand('chat', msg); document.getElementById('chatInput').value = ''; }
-
-// ربط أزرار التحكم
 document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => { const cmd = btn.dataset.cmd || btn.dataset.recipe; if (cmd) btn.addEventListener('click', () => { if (btn.dataset.cmd) sendCommand(btn.dataset.cmd); else if (btn.dataset.recipe) sendCommand('craft', btn.dataset.recipe); }); });
-
-// تبويبات التحكم
 document.querySelectorAll('.tab-btn').forEach(btn => { btn.addEventListener('click', () => { const tab = btn.dataset.tab; document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active')); document.getElementById(`${tab}Tab`).classList.add('active'); }); });
-
-// إحصائيات
 function loadAnalytics() { fetch('/api/bots').then(res => res.json()).then(data => { const bots = data.bots || []; document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1'; document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0'; let totalKills = 0, totalDeaths = 0; Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`).then(r => r.json()).catch(() => ({})))).then(statsArray => { statsArray.forEach(stat => { totalKills += stat.kills || 0; totalDeaths += stat.deaths || 0; }); document.getElementById('analyticsKills').innerHTML = totalKills; document.getElementById('analyticsDeaths').innerHTML = totalDeaths; }); }); }
-
-// دوال مساعدة
 function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-
-// تعبئة قوائم الإصدارات
 function populateVersions(selectId) { const select = document.getElementById(selectId); if (select) select.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join(''); }
 populateVersions('createVersion');
 populateVersions('editVersion');
 
-// تعريف الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
@@ -477,4 +289,4 @@ window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
 window.navigateTo = navigateTo;
 
-console.log('%c🚀 BotCraft v3.1 - جلسات دائمة وتحقق من حساب ماينكرافت', 'color: #7c3aed; font-size: 16px; font-weight: bold;');
+console.log('%c✅ BotCraft v3.2 - جلسات دائمة عبر ملفات', 'color: #22c55e; font-size: 14px;');
