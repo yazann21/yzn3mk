@@ -1,7 +1,7 @@
 require('dotenv').config({ path: '../.env' });
 const express = require('express');
 const session = require('express-session');
-const FileStore = require('session-file-store')(session);
+const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
@@ -10,20 +10,16 @@ const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// التأكد من وجود مجلد sessions
-const sessionsDir = path.join(__dirname, 'sessions');
-if (!fs.existsSync(sessionsDir)) fs.mkdirSync(sessionsDir, { recursive: true });
+const PORT = process.env.PORT || 3001; // تغيير المنفذ إلى 3001 لتجنب التعارض
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// إعداد الجلسات مع FileStore
+// تخزين الجلسات في SQLite (حل دائم)
 app.use(session({
-  store: new FileStore({ path: sessionsDir, ttl: 86400 }),
+  store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
   secret: process.env.SESSION_SECRET || 'my_secret_key_12345',
   resave: false,
   saveUninitialized: false,
@@ -48,11 +44,12 @@ app.get('/auth/login', async (req, res) => {
     const url = await getAuthUrl();
     res.json({ url });
   } catch (error) {
+    console.error('Error in /auth/login:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// مسار العودة من مايكروسوفت (الأهم)
+// مسار العودة من مايكروسوفت
 app.get('/auth/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).send('No code provided');
@@ -61,7 +58,6 @@ app.get('/auth/callback', async (req, res) => {
     const { accessToken } = await getTokenFromCode(code);
     const { uuid, username, minecraftToken, isRealMinecraft } = await getMinecraftProfile(accessToken);
 
-    // حفظ المستخدم في قاعدة البيانات
     db.run(`INSERT INTO users (microsoft_id, username, uuid, minecraft_token, is_real) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
       [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0],
@@ -70,14 +66,11 @@ app.get('/auth/callback', async (req, res) => {
           console.error(err);
           return res.status(500).send('Database error');
         }
-        // إنشاء الجلسة
         req.session.userId = uuid;
         req.session.username = username;
         req.session.minecraftToken = minecraftToken;
         req.session.isRealMinecraft = isRealMinecraft;
-        req.session.save((err) => {
-          if (err) console.error('Session save error:', err);
-          // إعادة التوجيه إلى الصفحة الرئيسية
+        req.session.save(() => {
           res.redirect('/');
         });
       });
@@ -87,7 +80,7 @@ app.get('/auth/callback', async (req, res) => {
   }
 });
 
-// API للتحقق من المستخدم (يعتمد على الجلسة)
+// API للتحقق من المستخدم
 app.get('/api/user', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   res.json({
@@ -97,14 +90,11 @@ app.get('/api/user', (req, res) => {
   });
 });
 
-// تسجيل الخروج
 app.post('/api/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ success: true });
-  });
+  req.session.destroy(() => res.json({ success: true }));
 });
 
-// باقي مسارات API (نفس ما كانت، لكن بدون sessionId في الرابط)
+// باقي مسارات API
 app.get('/api/bots', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -140,7 +130,6 @@ app.post('/api/start-cloud-bot', (req, res) => {
   });
 });
 
-// باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, tasks) هي نفسها
 app.post('/api/stop-bot', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   const { botId } = req.body;
@@ -212,8 +201,8 @@ app.get('/api/tasks/:botId', (req, res) => {
 
 app.get('/camera/:botId', (req, res) => {
   const botId = parseInt(req.params.botId);
-  const viewerPort = 3001 + botId;
+  const viewerPort = 8080 + botId;
   res.redirect(`http://localhost:${viewerPort}`);
 });
 
-app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`✅ Main server running on port ${PORT}`));

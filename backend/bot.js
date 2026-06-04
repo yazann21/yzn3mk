@@ -187,7 +187,7 @@ function createBot() {
     
     if (!viewerStarted) {
       try { 
-        const viewerPort = 3001 + parseInt(config.botId); 
+        const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
         require('prismarine-viewer').mineflayer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 }); 
         viewerStarted = true; 
         log(`🎥 كاميرا: http://localhost:${viewerPort}`);
@@ -221,6 +221,7 @@ function createBot() {
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
   bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
+  bot.on('error', (err) => log(`⚠️ خطأ: ${err.message}`));
 }
 
 function cleanup() {
