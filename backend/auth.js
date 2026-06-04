@@ -37,10 +37,9 @@ async function getMinecraftProfile(accessToken) {
     const email = graphResponse.data.userPrincipalName;
     const username = graphResponse.data.displayName || email.split('@')[0];
 
-    // 2. مصادقة Xbox Live (هذه الخطوة تحتاج مكتبة إضافية)
-    // حالياً، نستخدم معرفاً مؤقتاً للتجربة
-    console.log(`✅ User info: ${username}`);
-    console.log(`⚠️ ملاحظة: يستخدم UUID مؤقتاً لأن Xbox Live auth يتطلب مكتبة إضافية.`);
+    // 2. حالياً نستخدم معرفاً مؤقتاً للتجربة (لأن المصادقة الكاملة لـ Xbox Live تحتاج مكتبة منفصلة)
+    console.log(`✅ مستخدم مايكروسوفت: ${username}`);
+    console.log(`⚠️ ملاحظة: يستخدم UUID مؤقتاً للبوتات. للدخول إلى سيرفرات مثل Hypixel، تحتاج إلى تفعيل مصادقة Xbox Live الكاملة.`);
     
     return {
       uuid: 'temp-' + Math.random().toString(36).substring(2, 15),
@@ -48,7 +47,7 @@ async function getMinecraftProfile(accessToken) {
       minecraftToken: 'temp-token-' + Date.now()
     };
   } catch (error) {
-    console.error('Failed to get user info:', error.message);
+    console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
     return {
       uuid: 'fallback-' + Math.random().toString(36).substring(2, 10),
       username: 'MinecraftUser',
