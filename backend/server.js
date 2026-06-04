@@ -3,6 +3,7 @@ const express = require('express');
 const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const sqlite3 = require('sqlite3').verbose();
@@ -12,31 +13,35 @@ const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⭐ 1. إعدادات أساسية للإنتاج
+// ⭐ [الإعداد الأهم] إخبار Express أنه يعمل خلف وكيل (proxy) مثل Render
 app.set('trust proxy', 1);
 
-// ⭐ 2. CORS مع credentials
+// ⭐ إعدادات CORS الصحيحة للسماح بتبادل الجلسات والكوكيز
 app.use(cors({
-    origin: 'https://yzn3mk.onrender.com',  // رابط موقعك بالكامل
-    credentials: true
+    origin: 'https://yzn3mk.onrender.com', // يجب أن يكون رابط موقعك بالكامل
+    credentials: true                      // ضروري لإرسال واستقبال الكوكيز
 }));
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// ⭐ 3. إعداد الجلسة
+// ⭐ إعدادات الجلسة (Session) المُحسّنة
 app.use(session({
     store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
     secret: process.env.SESSION_SECRET || 'super_secret_key_change_this',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: true,       // لأن الموقع يعمل على HTTPS
+        domain: '.onrender.com',          // النطاق العام لجميع تطبيقات Render
+        secure: true,                    // لأن الموقع يعمل على HTTPS
         httpOnly: true,
-        sameSite: 'none',   // ضروري
-        maxAge: 1000 * 60 * 60 * 24 * 7
+        sameSite: 'none',                // ضروري للطلبات عبر المواقع (cross-site)
+        maxAge: 1000 * 60 * 60 * 24 * 7  // صلاحية الكوكيز (أسبوع)
     }
 }));
+
+// ... بقية الكود (جداول قاعدة البيانات، مسارات API، إلخ) يبقى كما هو ...
+// ... (يجب ألا يتم تغيير باقي الكود) ...
 
 // قاعدة البيانات
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
@@ -45,7 +50,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ---------- تسجيل حساب جديد ----------
+// ---------- مسارات API ----------
 app.post('/api/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !email || !password) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
@@ -66,7 +71,6 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// ---------- تسجيل الدخول ----------
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'البريد وكلمة المرور مطلوبة' });
@@ -81,22 +85,21 @@ app.post('/api/login', async (req, res) => {
     });
 });
 
-// ---------- التحقق من حالة المستخدم ----------
 app.get('/api/user', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    if (!req.session.userId) {
+        return res.status(401).json({ error: 'Not logged in' });
+    }
     res.json({ username: req.session.username, email: req.session.email || '' });
 });
 
-// ---------- تسجيل الخروج ----------
 app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
-// ---------- إدارة البوتات ----------
+// ---------- البوتات ----------
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
-        if (err) return res.status(500).json({ error: err.message });
         res.json({ bots: bots || [] });
     });
 });
@@ -111,13 +114,12 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ---------- التحقق من حساب البوت ----------
 const botFlows = new Map();
 app.get('/api/bot-verify/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const botId = parseInt(req.params.botId);
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], async (err, bot) => {
-        if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
+        if (!bot) return res.status(404).json({ error: 'Bot not found' });
         const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
             authTitle: 'Minecraft',
             deviceType: 'Win32',
@@ -148,11 +150,10 @@ app.get('/auth/bot-callback', async (req, res) => {
     }
 });
 
-// ---------- تشغيل البوت ----------
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
-    db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
+    db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], async (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         if (!bot.mc_token) return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً' });
         if (botProcesses.has(botId)) return res.json({ success: true });
@@ -162,7 +163,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ---------- المسارات المتبقية ----------
+// ---------- مسارات أخرى ----------
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -221,7 +222,6 @@ app.post('/api/restart-bot', (req, res) => {
 });
 
 app.post('/api/clear-logs/:botId', (req, res) => {
-    const fs = require('fs');
     const p = path.join(__dirname, 'logs', `bot-${req.params.botId}.log`);
     if (fs.existsSync(p)) fs.writeFileSync(p, '');
     res.json({ success: true });
