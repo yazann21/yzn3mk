@@ -8,13 +8,13 @@ const path = require('path');
 let bot = null;
 let isRunning = true;
 let logFile = null;
+let viewerStarted = false;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
 let teamList = [];
 let gearCheckInterval = null;
 let autoTotemInterval = null;
-let scheduledTasks = [];
 let killCount = 0;
 let deathCount = 0;
 
@@ -43,16 +43,112 @@ function log(msg) {
   if (process.send) process.send({ type: 'log', message: msg }); 
 }
 
-// ... توابع getBestArmor و getBestWeapon و equipEverythingFast (نفس الكود القديم) ...
-function updateStats() { /* نفس الكود القديم */ }
-function getBestArmorName() { /* نفس الكود القديم */ }
-function getBestWeaponName() { /* نفس الكود القديم */ }
-function getBestWeapon() { /* نفس الكود القديم */ }
-function equipEverythingFast() { /* نفس الكود القديم */ }
-function sendInventory() { /* نفس الكود القديم */ }
-function loadTasks() { /* نفس الكود القديم */ }
-function followAndAttack(entity, name) { /* نفس الكود القديم */ }
-function attackNearest() { /* نفس الكود القديم */ }
+function updateStats() {
+  if (!bot || !bot.entity) return;
+  const stats = {
+    health: bot.health || 20,
+    food: bot.food || 20,
+    position: `${Math.floor(bot.entity.position.x)}, ${Math.floor(bot.entity.position.y)}, ${Math.floor(bot.entity.position.z)}`,
+    armor: getBestArmorName(),
+    weapon: getBestWeaponName(),
+    level: bot.experience?.level || 0,
+    kills: killCount,
+    deaths: deathCount
+  };
+  if (process.send) process.send({ type: 'stats', stats: stats });
+}
+
+function getBestArmorName() {
+  const armorTypes = ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'];
+  for (const type of armorTypes) {
+    const chest = bot.inventory.items().find(i => i.name.includes(`${type}_chestplate`));
+    if (chest) return type;
+  }
+  return 'لا يوجد';
+}
+function getBestWeaponName() {
+  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
+  for (const type of weaponTypes) {
+    const weapon = bot.inventory.items().find(i => i.name.includes(type));
+    if (weapon) return weapon.name.replace('_', ' ');
+  }
+  return 'لا يوجد';
+}
+function getBestWeapon() {
+  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
+  for (const type of weaponTypes) {
+    const weapon = bot.inventory.items().find(item => item.name.includes(type));
+    if (weapon) return weapon;
+  }
+  return null;
+}
+
+function equipEverythingFast() {
+  try {
+    const armorSlots = [
+      { type: 'helmet', slot: 'head', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'chestplate', slot: 'torso', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'leggings', slot: 'legs', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
+      { type: 'boots', slot: 'feet', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] }
+    ];
+    for (const armor of armorSlots) {
+      for (const material of armor.order) {
+        const item = bot.inventory.items().find(i => i.name.includes(`${material}_${armor.type}`));
+        if (item) { bot.equip(item, armor.slot); break; }
+      }
+    }
+    const weapon = getBestWeapon();
+    if (weapon) bot.equip(weapon, 'hand');
+    const totem = bot.inventory.items().find(i => i.name.includes('totem'));
+    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) bot.equip(totem, 'off-hand');
+  } catch (err) {}
+}
+
+function sendInventory() {
+  if (!bot || !bot.inventory) return;
+  const items = bot.inventory.slots.map(slot => slot ? { name: slot.name, count: slot.count, slot: slot.slot } : null);
+  const helmet = bot.inventory.slots[5]?.name || 'فارغ';
+  const chest = bot.inventory.slots[6]?.name || 'فارغ';
+  const legs = bot.inventory.slots[7]?.name || 'فارغ';
+  const boots = bot.inventory.slots[8]?.name || 'فارغ';
+  const weapon = bot.inventory.slots[bot.getEquipmentDestSlot('hand')]?.name || 'فارغ';
+  process.send({ type: 'inventory', inventory: items.slice(9, 45), helmet, chest, legs, boots, weapon });
+}
+
+function followAndAttack(entity, name) {
+  if (currentTarget === name) return;
+  currentTarget = name;
+  log(`🏃 يطارد ${name}!`);
+  bot.pathfinder.setGoal(new GoalFollow(entity, 2.5), true);
+  if (combatInterval) clearInterval(combatInterval);
+  combatInterval = setInterval(() => {
+    if (!entity || !entity.position || !bot.entity) { clearInterval(combatInterval); currentTarget = null; return; }
+    const distance = bot.entity.position.distanceTo(entity.position);
+    if (distance < 4) {
+      const weapon = getBestWeapon();
+      if (weapon) bot.equip(weapon, 'hand');
+      bot.attack(entity);
+      log(`⚔️ يضرب ${name}!`);
+    } else if (distance < 15) {
+      bot.pathfinder.setGoal(new GoalFollow(entity, 2.5), true);
+    }
+  }, 300);
+  setTimeout(() => { if (combatInterval) { clearInterval(combatInterval); combatInterval = null; currentTarget = null; bot.pathfinder.setGoal(null); } }, 45000);
+}
+
+function attackNearest() {
+  let nearest = null, nearestDist = 20;
+  for (const [name, player] of Object.entries(bot.players)) {
+    if (!player.entity || player.entity === bot.entity) continue;
+    if (teamList.includes(name.toLowerCase())) continue;
+    const dist = bot.entity.position.distanceTo(player.entity.position);
+    if (dist < nearestDist) { nearest = player.entity; nearestDist = dist; }
+  }
+  if (nearest) {
+    const playerName = Object.keys(bot.players).find(name => bot.players[name].entity === nearest);
+    if (playerName && !teamList.includes(playerName.toLowerCase())) followAndAttack(nearest, playerName);
+  }
+}
 
 function createBot() {
   log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}]`);
@@ -72,7 +168,6 @@ function createBot() {
   bot.loadPlugin(pathfinder);
 
   bot.on('login', () => log(`✅ دخل البوت بنجاح`));
-  
   bot.on('spawn', () => {
     log(`📍 ظهر البوت في العالم`);
     setTimeout(() => equipEverythingFast(), 500);
@@ -90,12 +185,14 @@ function createBot() {
       }
     }, 1000);
     
-    // --- دمج الكاميرا: إرسال إشارة للـ Server لبدء خدمة الـ viewer ---
-    if (process.send) {
-      process.send({ type: 'spawned', viewerPort: 0 });
+    if (!viewerStarted) {
+      try { 
+        const viewerPort = 3001 + parseInt(config.botId); 
+        require('prismarine-viewer').mineflayer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 }); 
+        viewerStarted = true; 
+        log(`🎥 كاميرا: http://localhost:${viewerPort}`);
+      } catch (err) { log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`); }
     }
-    
-    loadTasks();
     
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
@@ -123,7 +220,7 @@ function createBot() {
   });
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); if (isRunning) setTimeout(createBot, 5000); });
+  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
 }
 
 function cleanup() {
@@ -131,9 +228,7 @@ function cleanup() {
   if (huntInterval) clearInterval(huntInterval);
   if (gearCheckInterval) clearInterval(gearCheckInterval);
   if (autoTotemInterval) clearInterval(autoTotemInterval);
-  scheduledTasks.forEach(task => clearInterval(task.interval));
   combatInterval = huntInterval = gearCheckInterval = autoTotemInterval = null;
-  scheduledTasks = [];
   currentTarget = null;
 }
 

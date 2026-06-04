@@ -30,16 +30,14 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
   try {
-    // 1. الحصول على معلومات مستخدم Microsoft
     const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const email = graphResponse.data.userPrincipalName;
     const username = graphResponse.data.displayName || email.split('@')[0];
-
-    // 2. حالياً نستخدم معرفاً مؤقتاً للتجربة (لأن المصادقة الكاملة لـ Xbox Live تحتاج مكتبة منفصلة)
+    
     console.log(`✅ مستخدم مايكروسوفت: ${username}`);
-    console.log(`⚠️ ملاحظة: يستخدم UUID مؤقتاً للبوتات. للدخول إلى سيرفرات مثل Hypixel، تحتاج إلى تفعيل مصادقة Xbox Live الكاملة.`);
+    console.log(`⚠️ ملاحظة: يستخدم UUID مؤقتاً للبوتات.`);
     
     return {
       uuid: 'temp-' + Math.random().toString(36).substring(2, 15),

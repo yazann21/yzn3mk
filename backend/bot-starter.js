@@ -22,9 +22,6 @@ function startBot(botId, username, uuid, serverIp, botType, teamNames = '', vers
     if (msg.type === 'log') logs.push(msg.message);
     if (msg.type === 'stats') botStats.set(botId, msg.stats);
     if (msg.type === 'inventory') botInventory.set(botId, msg.inventory);
-    if (msg.type === 'spawned') {
-      if (global.onBotSpawned) global.onBotSpawned(botId, botProcess);
-    }
   });
   
   botProcesses.set(botId, botProcess);
@@ -33,11 +30,8 @@ function startBot(botId, username, uuid, serverIp, botType, teamNames = '', vers
 
 function stopBot(botId) {
   const p = botProcesses.get(botId);
-  if (p) { p.kill(); botProcesses.delete(botId); }
-  botLogs.delete(botId);
-  botStats.delete(botId);
-  botInventory.delete(botId);
-  return !!p;
+  if (p) { p.kill(); botProcesses.delete(botId); return true; }
+  return false;
 }
 
 function getBotLogs(botId) { return botLogs.get(botId) || []; }
