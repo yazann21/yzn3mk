@@ -136,9 +136,19 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // بدء المصادقة في الخلفية (لا ننتظر)
-        startBotDeviceAuth(botId).catch(console.error);
-        res.json({ message: '🔗 تم بدء المصادقة. افتح سجل Render (Logs) وانسخ الرابط والرمز، ثم سجل دخولك بحساب ماينكرافت الحقيقي.' });
+        // بدء المصادقة (الرابط والرمز سيظهران في سجل Render)
+        const { token } = await startBotDeviceAuth(botId);
+        if (token) {
+            await new Promise((resolve, reject) => {
+                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [token, botId], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            res.json({ message: '✅ تم التحقق من البوت بنجاح!' });
+        } else {
+            res.json({ message: '🔗 تم إرسال رابط المصادقة. افتح سجل Render وانسخ الرابط والرمز.' });
+        }
     } catch (error) {
         console.error('Error in /api/bot-verify:', error);
         res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });

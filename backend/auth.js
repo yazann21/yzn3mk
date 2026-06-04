@@ -1,45 +1,32 @@
-const { ConfidentialClientApplication } = require('@azure/msal-node');
-const axios = require('axios');
-
-const msalConfig = {
-    auth: {
-        clientId: process.env.CLIENT_ID,
-        authority: 'https://login.microsoftonline.com/consumers',
-        clientSecret: process.env.CLIENT_SECRET,
-    }
-};
-const msalClient = new ConfidentialClientApplication(msalConfig);
+const { Authflow, Titles } = require('prismarine-auth');
 
 async function getAuthUrl() {
-    const authUrlParams = {
-        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
-        redirectUri: process.env.REDIRECT_URI,
-    };
-    return await msalClient.getAuthCodeUrl(authUrlParams);
+    // هذه الدالة لن تُستخدم في التدفق الجديد
+    return '/auth/callback';
 }
 
 async function getTokenFromCode(code) {
-    const tokenRequest = {
-        code: code,
-        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
-        redirectUri: process.env.REDIRECT_URI,
-    };
-    return await msalClient.acquireTokenByCode(tokenRequest);
+    return { accessToken: null };
 }
 
 async function getMinecraftProfile(accessToken) {
-    try {
-        const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
-            headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        const email = graphResponse.data.userPrincipalName;
-        const username = graphResponse.data.displayName || email.split('@')[0];
-        console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
-        return { username };
-    } catch (error) {
-        console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
-        throw error;
-    }
+    return { username: 'temp' };
 }
 
-module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };
+async function startBotDeviceAuth(botId) {
+    const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+        authTitle: Titles.MinecraftJava,
+        deviceType: 'Win32',
+        flow: 'msal',
+        onMsaCode: (data) => {
+            console.log(`\n🔐 مصادقة البوت ${botId}:`);
+            console.log(`🔗 الرابط: ${data.verification_uri}`);
+            console.log(`🔢 الرمز: ${data.user_code}`);
+            console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
+        }
+    });
+    const tokenResult = await flow.getMinecraftJavaToken();
+    return { token: tokenResult.token, flow };
+}
+
+module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile, startBotDeviceAuth };
