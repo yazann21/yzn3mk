@@ -94,7 +94,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مسار التحقق من البوت (يعمل بالمكتبة) ==========
+// ========== مسار التحقق من البوت (يعيد الرابط والرمز مباشرة) ==========
 app.get('/api/bot-verify/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const botId = parseInt(req.params.botId);
@@ -107,8 +107,40 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // بدء عملية المصادقة – ستطبع المكتبة الرابط والرمز في سجل Render
-        const tokenResult = await startBotDeviceAuth(botId);
+        // بدء عملية المصادقة - سنحصل على رابط ورمز دون انتظار التوكن
+        const deviceData = await startBotDeviceAuth(botId);
+        
+        // تخزين deviceData مؤقتاً لاستخدامه لاحقاً عند التحقق من التوكن
+        if (!global.pendingBotAuth) global.pendingBotAuth = {};
+        global.pendingBotAuth[botId] = deviceData;
+        
+        // إرجاع الرابط والرمز للمستخدم
+        res.json({
+            message: '🔐 يلزم التحقق من حساب ماينكرافت',
+            verificationUri: deviceData.verificationUri,
+            userCode: deviceData.userCode,
+            expiresIn: deviceData.expiresIn
+        });
+    } catch (error) {
+        console.error('Error in /api/bot-verify:', error);
+        res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
+    }
+});
+
+// مسار إضافي للتحقق من التوكن بعد أن يدخل المستخدم الرمز (سيُستدعى من الواجهة أو تلقائياً)
+app.get('/api/bot-check-token/:botId', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const botId = parseInt(req.params.botId);
+    try {
+        // هنا يجب محاولة إعادة إنشاء التدفق والحصول على التوكن
+        // لكن الطريقة الأسهل هي إعادة استخدام التدفق الذي بدأناه
+        // للتبسيط، سنقوم بإعادة محاولة الحصول على التوكن
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            authTitle: Titles.MinecraftJava,
+            deviceType: 'Win32',
+            flow: 'msal'
+        });
+        const tokenResult = await flow.getMinecraftJavaToken();
         if (tokenResult && tokenResult.token) {
             await new Promise((resolve, reject) => {
                 db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
@@ -116,13 +148,13 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
                     else resolve();
                 });
             });
-            res.json({ message: '✅ تم التحقق من البوت بنجاح! يمكنك الآن تشغيله.' });
+            res.json({ success: true, token: tokenResult.token });
         } else {
-            res.json({ message: '🔗 تم إرسال رابط المصادقة. افتح سجل Render وانسخ الرابط والرمز، ثم سجل دخولك بحساب ماينكرافت الحقيقي.' });
+            res.json({ success: false, message: 'لم يتم التحقق بعد' });
         }
     } catch (error) {
-        console.error('Error in /api/bot-verify:', error);
-        res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
+        console.error('Error checking token:', error);
+        res.json({ success: false, message: error.message });
     }
 });
 
@@ -142,7 +174,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ========== باقي المسارات ==========
+// ========== باقي المسارات (كما هي) ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;

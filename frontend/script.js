@@ -324,11 +324,30 @@ function verifyBotAccount(botId) {
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
-            if (data.message) {
-                alert(data.message);
-                if (data.message.includes('افتح سجل Render')) {
-                    alert('⚠️ اذهب إلى سجل Render (Logs) وابحث عن الرابط والرمز، ثم افتح الرابط في متصفح آخر وسجل الدخول بحساب ماينكرافت الحقيقي.');
+            if (data.verificationUri && data.userCode) {
+                // عرض الرابط والرمز في نافذة منبثقة
+                const confirmMsg = `🔐 رابط التحقق: ${data.verificationUri}\n🔢 الرمز: ${data.userCode}\n\n⚠️ صلاحية الرمز: ${data.expiresIn} ثانية\n\nبعد إدخال الرمز في الموقع، اضغط "موافق" وسنحاول التحقق من التوكن.\nملاحظة: قد تحتاج إلى الانتظار قليلاً حتى يتم التحقق.`;
+                if (confirm(confirmMsg)) {
+                    // بعد أن يضغط المستخدم موافق، نبدأ بالتحقق من التوكن كل 5 ثوانٍ
+                    let interval = setInterval(() => {
+                        fetch(`/api/bot-check-token/${botId}`, { credentials: 'include' })
+                            .then(res => res.json())
+                            .then(checkData => {
+                                if (checkData.success) {
+                                    clearInterval(interval);
+                                    alert('✅ تم التحقق من البوت بنجاح! يمكنك الآن تشغيله.');
+                                    loadBots(); // تحديث قائمة البوتات لاختفاء زر التحقق أو تغيير حالته
+                                }
+                            });
+                    }, 5000);
+                    // إيقاف التحقق بعد 60 ثانية (انتهاء صلاحية الرمز تقريباً)
+                    setTimeout(() => {
+                        clearInterval(interval);
+                        alert('⏰ انتهت صلاحية رمز التحقق. الرجاء المحاولة مرة أخرى.');
+                    }, (data.expiresIn + 5) * 1000);
                 }
+            } else if (data.message) {
+                alert(data.message);
             } else if (data.error) {
                 alert('خطأ: ' + data.error);
             }

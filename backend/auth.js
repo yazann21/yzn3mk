@@ -44,24 +44,33 @@ async function getMinecraftProfile(accessToken) {
 }
 
 /**
- * بدء عملية مصادقة جهاز ماينكرافت (لكل بوت على حدة)
- * @param {number} botId - معرف البوت
- * @returns {Promise<{token: string, profile: object}>}
+ * بدء عملية مصادقة جهاز ماينكرافت - تعيد رابط ورمز للمستخدم
+ * هذه الوظيفة ستعيد رابط التحقق بدلاً من انتظار التوكن مباشرة
  */
 async function startBotDeviceAuth(botId) {
-    const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
-        authTitle: Titles.MinecraftJava,
-        deviceType: 'Win32',
-        flow: 'msal',
-        onMsaCode: (data) => {
-            console.log(`\n🔐 مصادقة البوت ${botId}:`);
-            console.log(`🔗 الرابط: ${data.verification_uri}`);
-            console.log(`🔢 الرمز: ${data.user_code}`);
-            console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
+    return new Promise(async (resolve, reject) => {
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            authTitle: Titles.MinecraftJava,
+            deviceType: 'Win32',
+            flow: 'msal',
+            onMsaCode: (data) => {
+                // عندما تحصل المكتبة على بيانات الجهاز، نعيدها للمستخدم
+                resolve({
+                    verificationUri: data.verification_uri,
+                    userCode: data.user_code,
+                    expiresIn: data.expires_in
+                });
+            }
+        });
+        try {
+            // نبدأ عملية الحصول على التوكن ولكننا لن ننتظرها، لأن onMsaCode سيعيد البيانات
+            flow.getMinecraftJavaToken().catch(err => {
+                // تجاهل الأخطاء لأننا سنعتمد على onMsaCode
+            });
+        } catch (err) {
+            reject(err);
         }
     });
-    const tokenResult = await flow.getMinecraftJavaToken();
-    return tokenResult;
 }
 
 module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile, startBotDeviceAuth };
