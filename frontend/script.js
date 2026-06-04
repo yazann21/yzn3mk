@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - النسخة النهائية المعدلة
+// BOT CRAFT v4.0 - مع زر تحقق يعمل بالكامل
 // ========================================
 
 let currentUser = null;
@@ -306,8 +306,7 @@ function renderBots() {
             <div class="bot-actions" onclick="event.stopPropagation()">
                 ${b.status === 'online' ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>` : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`}
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
-                
- onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
+                <button class="btn-verify" onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
                 <button class="btn-delete" onclick="deleteBot(${b.id})"><i class="fas fa-trash"></i> حذف</button>
@@ -321,11 +320,12 @@ function verifyBotAccount(botId) {
         .then(res => res.json())
         .then(data => {
             if (data.message) {
-                alert(data.message + (data.message.includes('رابط') ? '\n\nافتح سجل Render (Logs) وانسخ الرابط والرمز.' : ''));
+                alert(data.message);
+                if (data.message.includes('انتظر')) {
+                    alert('📌 افتح سجل Render (Logs) وابحث عن 🔗 الرابط و 🔢 الرمز، ثم افتح الرابط في المتصفح وأدخل الرمز.');
+                }
             } else if (data.error) {
                 alert('خطأ: ' + data.error);
-            } else {
-                alert('تم التحقق من البوت!');
             }
         })
         .catch(() => alert('حدث خطأ أثناء محاولة التحقق'));
@@ -357,7 +357,6 @@ function deleteBot(id) {
     }
 }
 
-// إصلاح دالة openEditModal (تتحقق من وجود العناصر)
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
@@ -424,8 +423,7 @@ document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
 });
 
 function openCameraViewer(botId) {
-    const viewerPort = 8080 + parseInt(botId);
-    window.open(`http://localhost:${viewerPort}`, '_blank', 'width=1200,height=800');
+    window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
 }
 
 function closeCameraModal() {
@@ -433,7 +431,6 @@ function closeCameraModal() {
     if (modal) modal.style.display = 'none';
 }
 
-// إصلاح دالة openLogs (تتحقق من وجود العناصر)
 function openLogs(id) {
     const modal = document.getElementById('logsModal');
     const logsPre = document.getElementById('logsText');
@@ -643,7 +640,6 @@ function populateVersions(selectId) {
 populateVersions('createVersion');
 populateVersions('editVersion');
 
-// ربط الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
@@ -653,7 +649,7 @@ window.sendChatMessage = sendChatMessage;
 window.refreshInventory = refreshInventory;
 window.openBotControl = openBotControl;
 window.stopBot = stopBot;
-window.startBot = startBot;	
+window.startBot = startBot;
 window.restartBot = restartBot;
 window.deleteBot = deleteBot;
 window.openEditModal = openEditModal;

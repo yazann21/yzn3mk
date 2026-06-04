@@ -1,4 +1,5 @@
 const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { Authflow, Titles } = require('prismarine-auth');
 const axios = require('axios');
 
 const msalConfig = {
@@ -27,19 +28,19 @@ async function getTokenFromCode(code) {
     return await msalClient.acquireTokenByCode(tokenRequest);
 }
 
-async function getUserProfile(accessToken) {
+async function getMinecraftProfile(accessToken) {
     try {
         const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
-        console.log(`✅ تسجيل دخول: ${username}`);
-        return { username, email };
+        console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
+        return { username };
     } catch (error) {
-        console.error('❌ فشل جلب الملف الشخصي:', error.message);
+        console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
         throw error;
     }
 }
 
-module.exports = { getAuthUrl, getTokenFromCode, getUserProfile };
+module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };

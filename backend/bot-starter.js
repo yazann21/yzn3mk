@@ -25,14 +25,13 @@ async function startNgrokForBot(botId, port) {
     }
 }
 
-function startBot(botId, botName, msUsername, serverIp, botType, teamNames = '', version = '1.21.10') {
+function startBot(botId, botName, mcToken, serverIp, botType, teamNames = '', version = '1.21.10') {
     const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
-
-    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botName, msUsername, serverIp, botType, botId, teamNames, version], {
+    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botName, mcToken, serverIp, botType, botId, teamNames, version], {
         env: {
             ...process.env,
             BOT_NAME: botName,
-            MC_USERNAME: msUsername,
+            MC_TOKEN: mcToken,
             SERVER_IP: serverIp,
             BOT_TYPE: botType,
             BOT_ID: botId,
@@ -88,11 +87,59 @@ function stopBot(botId) {
     return true;
 }
 
-function getBotLogs(botId) { return botLogs.get(botId) || []; }
-function getBotStats(botId) { return botStats.get(botId) || { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', level: 0, kills: 0, deaths: 0 }; }
-function getBotInventory(botId) { return botInventory.get(botId) || { inventory: [], helmet: 'فارغ', chest: 'فارغ', legs: 'فارغ', boots: 'فارغ', weapon: 'فارغ' }; }
-function deleteBot(botId) { stopBot(botId); botLogs.delete(botId); botStats.delete(botId); botInventory.delete(botId); return true; }
-function sendCommand(botId, command, extra = null) { const p = botProcesses.get(botId); if (p) p.send({ type: 'command', command, extra }); }
-function getBotTunnelUrl(botId) { return botTunnels.get(botId); }
+function getBotLogs(botId) {
+    return botLogs.get(botId) || [];
+}
 
-module.exports = { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses, getBotTunnelUrl };
+function getBotStats(botId) {
+    return botStats.get(botId) || {
+        health: 20,
+        food: 20,
+        position: '0,0,0',
+        armor: 'لا يوجد',
+        weapon: 'لا يوجد',
+        level: 0,
+        kills: 0,
+        deaths: 0
+    };
+}
+
+function getBotInventory(botId) {
+    return botInventory.get(botId) || {
+        inventory: [],
+        helmet: 'فارغ',
+        chest: 'فارغ',
+        legs: 'فارغ',
+        boots: 'فارغ',
+        weapon: 'فارغ'
+    };
+}
+
+function deleteBot(botId) {
+    stopBot(botId);
+    botLogs.delete(botId);
+    botStats.delete(botId);
+    botInventory.delete(botId);
+    return true;
+}
+
+function sendCommand(botId, command, extra = null) {
+    const p = botProcesses.get(botId);
+    if (p) p.send({ type: 'command', command, extra });
+}
+
+function getBotTunnelUrl(botId) {
+    return botTunnels.get(botId);
+}
+
+module.exports = {
+    startBot,
+    stopBot,
+    getBotLogs,
+    getBotStats,
+    getBotInventory,
+    sendCommand,
+    deleteBot,
+    botProcesses,
+    getBotTunnelUrl
+};
