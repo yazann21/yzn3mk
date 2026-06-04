@@ -16,16 +16,16 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// جلسات دائمة (تحفظ في ملفات – تبقى بعد الـ Refresh)
+// إعدادات الجلسة - حفظ في ملفات
 app.use(session({
   store: new FileStore({ path: './sessions' }),
   secret: process.env.SESSION_SECRET || 'my_secret_key_12345',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true,
+    secure: false,   // لأن Render يستخدم HTTPS لكن localhost لا، نجعلها false للتجربة ثم نغيرها حسب البيئة
     httpOnly: true,
-    sameSite: 'none',
+    sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 24 * 7 // أسبوع
   }
 }));
@@ -54,21 +54,27 @@ app.get('/auth/callback', async (req, res) => {
     db.run(`INSERT INTO users (microsoft_id, username, uuid, minecraft_token, is_real) VALUES (?, ?, ?, ?, ?) 
             ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
       [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0], function(err) {
-        if (err) return res.status(500).send('Database error');
-        
-        // تخزين بيانات المستخدم في الجلسة (بدلاً من Map)
+        if (err) {
+          console.error(err);
+          return res.status(500).send('Database error');
+        }
+        // تخزين بيانات المستخدم في الجلسة
         req.session.userId = uuid;
         req.session.username = username;
         req.session.minecraftToken = minecraftToken;
         req.session.isRealMinecraft = isRealMinecraft;
-        req.session.save();
-        
-        res.redirect(`/`);
+        req.session.save((err) => {
+          if (err) console.error('Session save error:', err);
+          res.redirect(`/`);
+        });
       });
-  } catch (error) { res.status(500).send('Auth failed: ' + error.message); }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Auth failed: ' + error.message);
+  }
 });
 
-// API للتحقق من حالة المستخدم (يعتمد على الجلسة)
+// API للتحقق من حالة المستخدم
 app.get('/api/user', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   res.json({
@@ -80,14 +86,17 @@ app.get('/api/user', (req, res) => {
 
 // تسجيل الخروج
 app.post('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ success: true });
+  req.session.destroy((err) => {
+    if (err) console.error(err);
+    res.json({ success: true });
+  });
 });
 
-// API البوتات (تعتمد على الجلسة)
+// باقي مسارات API (مختصرة ولكنها كاملة)
 app.get('/api/bots', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
+    if (err) return res.status(500).json({ error: err.message });
     res.json({ bots: bots || [] });
   });
 });
@@ -96,6 +105,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   const { botName, botType, serverIp, teamNames, version } = req.body;
   db.get('SELECT COUNT(*) as count FROM bots WHERE user_id = ? AND is_cloud_bot = 1', [req.session.userId], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
     if (row.count >= 1) return res.status(400).json({ error: 'You already have a free cloud bot' });
     db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status, is_cloud_bot) VALUES (?, ?, ?, ?, ?, ?, 'stopped', 1)`,
       [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10'], function(err) {
@@ -108,12 +118,9 @@ app.post('/api/create-bot-cloud', (req, res) => {
 app.post('/api/start-cloud-bot', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   const { botId } = req.body;
-  
-  // التحقق من صحة حساب ماينكرافت قبل تشغيل البوت
   if (!req.session.isRealMinecraft) {
-    return res.status(400).json({ error: 'need_minecraft_auth', message: 'حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي. يرجى تسجيل الدخول مرة أخرى.' });
+    return res.status(400).json({ error: 'need_minecraft_auth', message: 'حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي.' });
   }
-  
   db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
     if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
     if (botProcesses.has(botId)) return res.json({ success: true });
@@ -123,7 +130,6 @@ app.post('/api/start-cloud-bot', (req, res) => {
   });
 });
 
-// باقي مسارات API (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, tasks) كما هي
 app.post('/api/stop-bot', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   const { botId } = req.body;
@@ -171,6 +177,7 @@ app.post('/api/restart-bot', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   const { botId } = req.body;
   db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
+    if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
     stopBot(botId);
     setTimeout(() => {
       startBot(botId, bot.bot_name, req.session.userId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, req.session.minecraftToken);
