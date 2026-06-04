@@ -1,4 +1,5 @@
 const { ConfidentialClientApplication } = require('@azure/msal-node');
+const axios = require('axios');
 
 const msalConfig = {
     auth: {
@@ -27,13 +28,20 @@ async function getTokenFromCode(code) {
 }
 
 async function getMinecraftProfile(accessToken) {
-    // نحن لا نستخدمها حالياً – سنعيد بيانات مؤقتة
-    return {
-        uuid: 'temp-' + Math.random().toString(36).substring(2, 15),
-        username: 'MinecraftUser',
-        minecraftToken: null,
-        isRealMinecraft: false
-    };
+    try {
+        // جلب اسم المستخدم من مايكروسوفت غراف API
+        const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        const email = graphResponse.data.userPrincipalName;
+        const username = graphResponse.data.displayName || email.split('@')[0];
+
+        console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
+        return { username, uuid: username }; // نمرر اسم المستخدم فقط
+    } catch (error) {
+        console.error('❌ فشل الحصول على البيانات:', error.message);
+        throw error;
+    }
 }
 
 module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };

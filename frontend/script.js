@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - نظام مستخدمين محلي
+// BOT CRAFT v4.0 - نسخة مبسطة (مايكروسوفت فقط)
 // ========================================
 
 let currentUser = null;
@@ -38,57 +38,17 @@ document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
     initCharts();
     initColorPicker();
-    initAuthTabs();
-    checkAuth();
+    initAuth();
+    loadDashboard();
+    loadBots();
 });
 
-// ---------- علامات تبويب المصادقة ----------
-function initAuthTabs() {
-    const tabs = document.querySelectorAll('.auth-tab');
-    const panels = {
-        login: document.getElementById('loginPanel'),
-        register: document.getElementById('registerPanel')
-    };
-    const resetPanel = document.getElementById('resetPanel');
-    
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const target = tab.dataset.tab;
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            Object.values(panels).forEach(panel => panel?.classList.remove('active'));
-            if (target === 'login') panels.login?.classList.add('active');
-            if (target === 'register') panels.register?.classList.add('active');
-            if (resetPanel) resetPanel.style.display = 'none';
-        });
-    });
-    
-    const forgotLink = document.getElementById('forgotPasswordLink');
-    const backToLogin = document.getElementById('backToLoginLink');
-    if (forgotLink) {
-        forgotLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            Object.values(panels).forEach(p => p?.classList.remove('active'));
-            if (resetPanel) resetPanel.style.display = 'flex';
-            tabs.forEach(t => t.classList.remove('active'));
-        });
-    }
-    if (backToLogin && resetPanel) {
-        backToLogin.addEventListener('click', (e) => {
-            e.preventDefault();
-            resetPanel.style.display = 'none';
-            panels.login?.classList.add('active');
-            document.querySelector('.auth-tab[data-tab="login"]')?.classList.add('active');
-        });
-    }
-}
-
-// ---------- التحقق من المصادقة ----------
-function checkAuth() {
+// ---------- مصادقة مايكروسوفت ----------
+function initAuth() {
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
             if (res.status === 401) {
-                showAuth();
+                showLogin();
                 return null;
             }
             return res.json();
@@ -100,85 +60,49 @@ function checkAuth() {
                 loadDashboard();
                 loadBots();
             } else {
-                showAuth();
+                showLogin();
             }
         })
-        .catch(() => showAuth());
+        .catch(() => showLogin());
+
+    const loginBtn = document.getElementById('loginMicrosoftBtn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            fetch('/auth/login', { credentials: 'include' })
+                .then(res => res.json())
+                .then(data => { if (data.url) window.location.href = data.url; });
+        });
+    }
 }
 
-function showAuth() {
-    const overlay = document.getElementById('authOverlay');
+function showLogin() {
+    const overlay = document.getElementById('loginOverlay');
     const wrapper = document.getElementById('appWrapper');
     if (overlay) overlay.style.display = 'flex';
     if (wrapper) wrapper.style.display = 'none';
 }
 
 function showApp() {
-    const overlay = document.getElementById('authOverlay');
+    const overlay = document.getElementById('loginOverlay');
     const wrapper = document.getElementById('appWrapper');
     if (overlay) overlay.style.display = 'none';
     if (wrapper) wrapper.style.display = 'flex';
     
     if (document.getElementById('sidebarUsername')) document.getElementById('sidebarUsername').innerHTML = currentUser.username;
     if (document.getElementById('settingsUsername')) document.getElementById('settingsUsername').innerHTML = currentUser.username;
-    if (document.getElementById('settingsEmail')) document.getElementById('settingsEmail').innerHTML = currentUser.email || '';
     if (document.getElementById('welcomeUsername')) document.getElementById('welcomeUsername').innerHTML = currentUser.username;
 }
 
 function logout() {
     fetch('/api/logout', { method: 'POST', credentials: 'include' }).then(() => {
         currentUser = null;
-        showAuth();
+        showLogin();
     });
 }
 
 // ---------- أحداث الواجهة ----------
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
-    
-    document.getElementById('loginBtn')?.addEventListener('click', () => {
-        const email = document.getElementById('loginEmail').value;
-        const password = document.getElementById('loginPassword').value;
-        fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ email, password })
-        }).then(res => res.json()).then(data => {
-            if (data.error) alert(data.error);
-            else { currentUser = data; showApp(); loadDashboard(); loadBots(); }
-        });
-    });
-    
-    document.getElementById('registerBtn')?.addEventListener('click', () => {
-        const username = document.getElementById('regUsername').value;
-        const email = document.getElementById('regEmail').value;
-        const password = document.getElementById('regPassword').value;
-        const confirm = document.getElementById('regConfirmPassword').value;
-        if (password !== confirm) return alert('كلمة المرور غير متطابقة');
-        fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ username, email, password })
-        }).then(res => res.json()).then(data => {
-            if (data.error) alert(data.error);
-            else { alert('تم إنشاء الحساب بنجاح! قم بتسجيل الدخول'); }
-        });
-    });
-    
-    document.getElementById('resetPasswordBtn')?.addEventListener('click', () => {
-        const email = document.getElementById('resetEmail').value;
-        if (!email) return alert('أدخل بريدك الإلكتروني');
-        fetch('/api/forgot-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-        }).then(res => res.json()).then(data => {
-            alert(data.message || 'تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني');
-        }).catch(() => alert('حدث خطأ، حاول لاحقاً'));
-    });
-    
     document.getElementById('createBotType')?.addEventListener('change', () => {});
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
         document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
@@ -346,13 +270,12 @@ function verifyBotAccount(botId) {
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
-            if (data.url) {
-                window.open(data.url, '_blank', 'width=800,height=600');
-                alert('تم فتح نافذة المصادقة. قم بتسجيل الدخول بحساب ماينكرافت الخاص بهذا البوت.');
-            } else if (data.message) {
-                alert(data.message);
+            if (data.message) {
+                alert(data.message + '\n\nافتح سجل الخادم (Logs) في Render وانسخ الرابط والرمز.');
+            } else if (data.error) {
+                alert('خطأ: ' + data.error);
             } else {
-                alert('تم التحقق من الحساب بنجاح!');
+                alert('تم التحقق من البوت!');
             }
         })
         .catch(() => alert('حدث خطأ أثناء محاولة التحقق'));
@@ -472,7 +395,6 @@ document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => 
         else if (btn.dataset.recipe) sendCommand('craft', btn.dataset.recipe);
     });
 });
-
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const tab = btn.dataset.tab;
@@ -482,7 +404,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.getElementById(`${tab}Tab`).classList.add('active');
     });
 });
-
 function loadAnalytics() {
     fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
         const bots = data.bots || [];
