@@ -319,21 +319,26 @@ function renderBots() {
     `).join('');
 }
 
+// ========== دالة التحقق من البوت (تعمل مع الخادم) ==========
 function verifyBotAccount(botId) {
+    console.log('verifyBotAccount called for bot:', botId);
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
-            if (data.message) alert(data.message);
-            else if (data.error) alert('خطأ: ' + data.error);
-        })
-        .catch(err => alert('حدث خطأ أثناء الاتصال'));
-}
+            if (data.message) {
+                alert(data.message);
+            } else if (data.error) {
+                alert('خطأ: ' + data.error);
+            } else {
+                alert('تم بدء عملية التحقق. افتح سجل Render وابحث عن الرابط والرمز.');
+            }
         })
         .catch(err => {
             console.error('Fetch error:', err);
             alert('حدث خطأ أثناء الاتصال بالخادم');
         });
 }
+
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
         method: 'POST',
