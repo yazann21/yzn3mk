@@ -1,66 +1,67 @@
-const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { Authflow } = require('prismarine-auth');
+const crypto = require('crypto');
 
-const msalConfig = {
-  auth: {
-    clientId: process.env.CLIENT_ID,
-    authority: 'https://login.microsoftonline.com/consumers',
-    clientSecret: process.env.CLIENT_SECRET,
-  }
-};
-const msalClient = new ConfidentialClientApplication(msalConfig);
+// معرف ثابت للمستخدم (يمكن تغييره)
+const USER_IDENTIFIER = 'botcraft_user';
+const CACHE_DIR = './ms-cache';
 
-/**
- * يُنشئ رابط مصادقة صالحًا لمايكروسوفت باستخدام بيانات التطبيق المسجلة.
- */
+let currentFlow = null;
+
+function getFlow() {
+    if (!currentFlow) {
+        currentFlow = new Authflow(USER_IDENTIFIER, CACHE_DIR, {
+            authTitle: 'Minecraft',
+            deviceType: 'Win32',
+            flow: 'msal',
+            redirectUri: process.env.REDIRECT_URI
+        });
+    }
+    return currentFlow;
+}
+
 async function getAuthUrl() {
-  const authUrlParams = {
-    scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
-    redirectUri: process.env.REDIRECT_URI, // هذا الرابط يجب أن يكون صحيحًا في Render
-  };
-  try {
-    const authUrl = await msalClient.getAuthCodeUrl(authUrlParams);
-    console.log(`✅ Generated auth URL: ${authUrl}`);
-    return authUrl;
-  } catch (error) {
-    console.error('❌ Error generating auth URL:', error);
-    throw error;
-  }
+    try {
+        const flow = getFlow();
+        // نطلب رابط المصادقة من مايكروسوفت
+        const url = await flow.getAuthCodeUrl();
+        return url;
+    } catch (error) {
+        console.error('Error getting auth URL:', error);
+        throw error;
+    }
 }
 
-/**
- * يستبدل رمز المصادقة (code) بـ access token.
- */
 async function getTokenFromCode(code) {
-  const tokenRequest = {
-    code: code,
-    scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
-    redirectUri: process.env.REDIRECT_URI,
-  };
-  try {
-    const response = await msalClient.acquireTokenByCode(tokenRequest);
-    return { accessToken: response.accessToken };
-  } catch (error) {
-    console.error('❌ Error getting token from code:', error);
-    throw error;
-  }
+    // مع Authflow، لا نحتاج هذه الدالة مباشرة، لكننا نضعها للتوافق
+    return { accessToken: null };
 }
 
-/**
- * الحصول على معلومات الحساب من Microsoft Graph.
- * في هذه المرحلة، نكتفي بالبيانات من Microsoft ونؤجل مصادقة Minecraft.
- */
 async function getMinecraftProfile(accessToken) {
-  // بما أن مصادقة ماينكرافت معقدة وتسبب مشاكل، سنستخدم بيانات مؤقتة
-  // لكننا نضمن أن عملية تسجيل الدخول الأساسية تعمل.
-  const uniqueId = Math.random().toString(36).substring(2, 15);
-  console.log(`✅ تم تسجيل دخول مايكروسوفت: ${uniqueId} (بدون مصادقة ماينكرافت)`);
-  
-  return {
-    uuid: uniqueId,
-    username: `User_${uniqueId.substring(0, 5)}`,
-    minecraftToken: null,
-    isRealMinecraft: false
-  };
+    try {
+        const flow = getFlow();
+        // الحصول على توكن ماينكرافت الحقيقي
+        const minecraftToken = await flow.getMinecraftJavaToken();
+        const uuid = minecraftToken.profile.id;
+        const username = minecraftToken.profile.name;
+
+        console.log(`✅ ماينكرافت حقيقي: ${username} (UUID: ${uuid})`);
+        return {
+            uuid: uuid,
+            username: username,
+            minecraftToken: minecraftToken.token,
+            isRealMinecraft: true
+        };
+    } catch (error) {
+        console.error('❌ فشل الحصول على بيانات ماينكرافت:', error.message);
+        // إنشاء بيانات مؤقتة
+        const tempId = crypto.randomBytes(8).toString('hex');
+        return {
+            uuid: tempId,
+            username: `TempUser_${tempId.substring(0, 6)}`,
+            minecraftToken: 'temp-token',
+            isRealMinecraft: false
+        };
+    }
 }
 
 module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };
