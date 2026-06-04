@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - مع زر تحقق يعمل (Device Code Flow)
+// BOT CRAFT v4.0 - مع زر تحقق يعمل
 // ========================================
 
 let currentUser = null;
@@ -319,22 +319,26 @@ function renderBots() {
     `).join('');
 }
 
-// ========== دالة التحقق من البوت (تظهر الرابط والرمز) ==========
+// ========== دالة التحقق من البوت ==========
 function verifyBotAccount(botId) {
+    console.log('✅ verifyBotAccount called for bot:', botId);
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
+            console.log('📦 Response data:', data);
             if (data.verification_uri && data.user_code) {
-                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في أي متصفح، سجل الدخول بحساب ماينكرافت الحقيقي، وأدخل الرمز.`);
+                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.`);
             } else if (data.message) {
                 alert(data.message);
             } else if (data.error) {
                 alert('خطأ: ' + data.error);
+            } else {
+                alert('تم التحقق من البوت بنجاح!');
             }
         })
         .catch(err => {
-            console.error('Verify error:', err);
-            alert('حدث خطأ أثناء محاولة التحقق');
+            console.error('❌ Fetch error:', err);
+            alert('حدث خطأ أثناء محاولة التحقق: ' + err.message);
         });
 }
 
@@ -651,6 +655,7 @@ function populateVersions(selectId) {
 populateVersions('createVersion');
 populateVersions('editVersion');
 
+// ربط الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
