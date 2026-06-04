@@ -319,29 +319,24 @@ function renderBots() {
     `).join('');
 }
 
-// ========== دالة التحقق من البوت ==========
 function verifyBotAccount(botId) {
-    console.log('✅ verifyBotAccount called for bot:', botId);
+    console.log('verifyBotAccount called for bot:', botId);
     fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
-            console.log('📦 Response data:', data);
-            if (data.verification_uri && data.user_code) {
-                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.`);
-            } else if (data.message) {
+            if (data.message) {
                 alert(data.message);
             } else if (data.error) {
                 alert('خطأ: ' + data.error);
             } else {
-                alert('تم التحقق من البوت بنجاح!');
+                alert('تم بدء عملية التحقق. افتح سجل Render وابحث عن الرابط والرمز.');
             }
         })
         .catch(err => {
-            console.error('❌ Fetch error:', err);
-            alert('حدث خطأ أثناء محاولة التحقق: ' + err.message);
+            console.error('Fetch error:', err);
+            alert('حدث خطأ أثناء الاتصال بالخادم');
         });
 }
-
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
         method: 'POST',

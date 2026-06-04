@@ -5,8 +5,9 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const { Authflow, Titles } = require('prismarine-auth');
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses, getBotTunnelUrl } = require('./bot-starter');
-const { getAuthUrl, getTokenFromCode, getMinecraftProfile, startBotDeviceAuth } = require('./auth');
+const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -94,8 +95,34 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مصادقة البوت (Device Code Flow – تعيد الرابط والرمز للمستخدم) ==========
-const pendingBotFlows = new Map();
+// ========== مصادقة البوت (تعمل في الخلفية وتطبع الرابط في السجلات) ==========
+async function startBotDeviceAuth(botId) {
+    const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+        authTitle: Titles.MinecraftJava,
+        deviceType: 'Win32',
+        flow: 'msal',
+        onMsaCode: (data) => {
+            console.log(`\n🔐 مصادقة البوت ${botId}:`);
+            console.log(`🔗 الرابط: ${data.verification_uri}`);
+            console.log(`🔢 الرمز: ${data.user_code}`);
+            console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
+        }
+    });
+    try {
+        const tokenResult = await flow.getMinecraftJavaToken();
+        if (tokenResult && tokenResult.token) {
+            await new Promise((resolve, reject) => {
+                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            console.log(`✅ Bot ${botId} verified successfully.`);
+        }
+    } catch (err) {
+        console.error(`❌ Bot ${botId} verification failed:`, err);
+    }
+}
 
 app.get('/api/bot-verify/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
@@ -109,61 +136,12 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // بدء عملية المصادقة – نحصل على الرابط والرمز مباشرة
-        const deviceData = await startBotDeviceAuth(botId);
-        if (deviceData && deviceData.verification_uri && deviceData.user_code) {
-            // تخزين الـ flow لاستخدامه في callback
-            pendingBotFlows.set(botId, deviceData.flow);
-            res.json({
-                verification_uri: deviceData.verification_uri,
-                user_code: deviceData.user_code,
-                message: 'افتح الرابط وأدخل الرمز باستخدام حساب ماينكرافت الحقيقي'
-            });
-        } else {
-            res.status(500).json({ error: 'فشل الحصول على بيانات المصادقة' });
-        }
+        // بدء المصادقة في الخلفية (لا ننتظر)
+        startBotDeviceAuth(botId).catch(console.error);
+        res.json({ message: '🔗 تم بدء المصادقة. افتح سجل Render (Logs) وانسخ الرابط والرمز، ثم سجل دخولك بحساب ماينكرافت الحقيقي.' });
     } catch (error) {
         console.error('Error in /api/bot-verify:', error);
         res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
-    }
-});
-
-// مسار العودة من مايكروسوفت بعد إدخال الرمز (مصادقة البوت)
-app.get('/auth/bot-callback', async (req, res) => {
-    const { code } = req.query;
-    if (!code) return res.status(400).send('No code provided');
-    let botId = null;
-    let flow = null;
-    for (let [id, f] of pendingBotFlows.entries()) {
-        flow = f;
-        botId = id;
-        pendingBotFlows.delete(id);
-        break;
-    }
-    if (!flow) return res.status(400).send('No pending verification');
-    try {
-        await flow.authFlow(code);
-        const tokenResult = await flow.getMinecraftJavaToken();
-        if (tokenResult && tokenResult.token) {
-            await new Promise((resolve, reject) => {
-                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
-            res.send(`
-                <html><body style="background:#0a0a1a;color:white;text-align:center;padding:50px;">
-                <h2>✅ تم التحقق من البوت بنجاح!</h2>
-                <p>يمكنك إغلاق هذه النافذة والعودة إلى الموقع.</p>
-                <script>setTimeout(() => window.close(), 3000);</script>
-                </body></html>
-            `);
-        } else {
-            throw new Error('No token received');
-        }
-    } catch (err) {
-        console.error('Bot callback error:', err);
-        res.status(500).send('فشل التحقق: ' + err.message);
     }
 });
 
@@ -174,7 +152,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         if (!bot.mc_token) {
-            return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً لربط حساب ماينكرافت' });
+            return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً ثم انتظر دقيقة وأعد المحاولة' });
         }
         if (botProcesses.has(botId)) return res.json({ success: true });
         startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
@@ -183,7 +161,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ========== باقي مسارات API (إيقاف، حذف، تحديث، سجلات، إلخ) ==========
+// ========== باقي مسارات API ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
