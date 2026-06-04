@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v3.5 - WORKING WITH CREDENTIALS & REDIRECT
+// BOT CRAFT v3.6 - FIX REDIRECT AFTER LOGIN
 // ========================================
 
 let currentUser = null;
@@ -41,13 +41,36 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 });
 
+// ---------- CHECK AUTH WITH FORCED REDIRECT HANDLING ----------
 function checkAuth() {
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('nocache')) {
+    const loginSuccess = urlParams.has('login=success');
+    
+    if (loginSuccess) {
+        // إزالة المعامل من الرابط
         window.history.replaceState({}, document.title, '/');
-        window.location.reload();
+        // إعادة التحقق من حالة المستخدم بعد نصف ثانية
+        setTimeout(() => {
+            fetch('/api/user', { credentials: 'include' })
+                .then(res => {
+                    if (!res.ok) throw new Error('Not logged in');
+                    return res.json();
+                })
+                .then(user => {
+                    if (user && user.username) {
+                        currentUser = user;
+                        showApp();
+                        loadDashboard();
+                        loadBots();
+                    } else {
+                        showLogin();
+                    }
+                })
+                .catch(() => showLogin());
+        }, 500);
         return;
     }
+    
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
             if (!res.ok) throw new Error('Not logged in');

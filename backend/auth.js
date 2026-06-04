@@ -1,4 +1,5 @@
 const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { authenticate } = require('@xboxreplay/xboxlive-auth');
 const axios = require('axios');
 
 const msalConfig = {
@@ -29,26 +30,34 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
   try {
-    // مؤقتاً: نجلب فقط اسم المستخدم من Microsoft Graph ونتجاوز Xbox Live
+    // الحصول على معلومات مستخدم Microsoft
     const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const email = graphResponse.data.userPrincipalName;
     const username = graphResponse.data.displayName || email.split('@')[0];
-    
-    console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username} (بدون مصادقة ماينكرافت)`);
+
+    // مصادقة Xbox Live
+    const xboxAuth = await authenticate(email, accessToken);
+    const profileRes = await axios.get('https://api.minecraftservices.com/minecraft/profile', {
+      headers: { Authorization: `Bearer ${xboxAuth.accessToken}` }
+    });
+    const uuid = profileRes.data.id;
+    const mcUsername = profileRes.data.name;
+
+    console.log(`✅ ماينكرافت حقيقي: ${mcUsername} (UUID: ${uuid})`);
     return {
-      uuid: 'temp-' + Math.random().toString(36).substring(2, 15),
-      username: username,
-      minecraftToken: 'temp-token',
-      isRealMinecraft: false
+      uuid: uuid,
+      username: mcUsername,
+      minecraftToken: xboxAuth.accessToken,
+      isRealMinecraft: true
     };
   } catch (error) {
-    console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
+    console.error('❌ فشل الحصول على بيانات ماينكرافت:', error.message);
     return {
-      uuid: 'fallback-' + Math.random().toString(36).substring(2, 10),
+      uuid: 'temp-' + Math.random().toString(36).substring(2, 15),
       username: 'MinecraftUser',
-      minecraftToken: 'fallback-token',
+      minecraftToken: 'temp-token-' + Date.now(),
       isRealMinecraft: false
     };
   }

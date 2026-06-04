@@ -17,7 +17,7 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-// تخزين الجلسات في SQLite
+// إعداد الجلسات مع SQLite
 app.use(session({
   store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
   secret: process.env.SESSION_SECRET || 'my_secret_key_12345',
@@ -48,10 +48,11 @@ app.get('/auth/login', async (req, res) => {
   }
 });
 
-// مسار العودة من مايكروسوفت
+// مسار العودة بعد مصادقة مايكروسوفت
 app.get('/auth/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).send('No code provided');
+
   try {
     const { accessToken } = await getTokenFromCode(code);
     const { uuid, username, minecraftToken, isRealMinecraft } = await getMinecraftProfile(accessToken);
@@ -60,14 +61,18 @@ app.get('/auth/callback', async (req, res) => {
             ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
       [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0],
       function(err) {
-        if (err) return res.status(500).send('Database error');
+        if (err) {
+          console.error(err);
+          return res.status(500).send('Database error');
+        }
         req.session.userId = uuid;
         req.session.username = username;
         req.session.minecraftToken = minecraftToken;
         req.session.isRealMinecraft = isRealMinecraft;
-        req.session.save(() => {
-          // إعادة التوجيه إلى صفحة وسيطة تقوم بالتحقق
-          res.redirect('/auth/success');
+        req.session.save((err) => {
+          if (err) console.error('Session save error:', err);
+          // إعادة التوجيه مع منع الكاش وإضافة معامل قسري
+          res.redirect('/?login=success&t=' + Date.now());
         });
       });
   } catch (error) {
@@ -76,22 +81,7 @@ app.get('/auth/callback', async (req, res) => {
   }
 });
 
-// صفحة وسيطة لتأكيد الجلسة قبل الانتقال إلى الصفحة الرئيسية
-app.get('/auth/success', (req, res) => {
-  if (!req.session.userId) return res.redirect('/');
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head><title>Redirecting...</title><script>
-      // الانتقال إلى الصفحة الرئيسية مع إجبار إعادة التحميل
-      window.location.href = '/';
-    </script></head>
-    <body>Please wait...</body>
-    </html>
-  `);
-});
-
-// API للتحقق من المستخدم
+// API للتحقق من حالة المستخدم
 app.get('/api/user', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   res.json({
@@ -105,7 +95,7 @@ app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// باقي المسارات (مختصرة للاختصار، لكنها كما هي)
+// باقي المسارات (نفس ما كانت، لم تتغير)
 app.get('/api/bots', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -129,7 +119,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
 app.post('/api/start-cloud-bot', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   if (!req.session.isRealMinecraft) {
-    return res.status(400).json({ error: 'need_minecraft_auth' });
+    return res.status(400).json({ error: 'need_minecraft_auth', message: 'حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي' });
   }
   const { botId } = req.body;
   db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
