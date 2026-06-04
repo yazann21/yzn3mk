@@ -38,6 +38,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
+// ========== تسجيل الدخول العادي ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -55,24 +56,27 @@ app.get('/auth/callback', async (req, res) => {
         const profile = await getMinecraftProfile(accessToken);
         const { username, minecraftToken, minecraftProfile } = profile;
         
-        db.run(`INSERT OR REPLACE INTO users (username, mc_token, mc_username) VALUES (?, ?, ?)`,
-            [username, minecraftToken, minecraftProfile?.name || null], (err) => {
-            if (err) return res.status(500).send('Database error');
+        db.run(`INSERT OR REPLACE INTO users (username, mc_token, mc_username) VALUES (?, ?, ?)`, 
+            [username, minecraftToken, minecraftProfile.name], (err) => {
+            if (err) {
+                console.error('Database error:', err);
+                return res.status(500).send('Database error');
+            }
             req.session.userId = username;
             req.session.username = username;
             req.session.minecraftToken = minecraftToken;
-            req.session.minecraftUsername = minecraftProfile?.name || null;
+            req.session.minecraftUsername = minecraftProfile.name;
             req.session.save(() => res.redirect('/'));
         });
     } catch (error) {
-        console.error(error);
+        console.error('Auth callback error:', error);
         res.status(500).send('Auth failed: ' + error.message);
     }
 });
 
 app.get('/api/user', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    res.json({
+    res.json({ 
         username: req.session.username,
         minecraftUsername: req.session.minecraftUsername || 'غير مرتبط'
     });
@@ -82,6 +86,7 @@ app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
+// ========== إدارة البوتات ==========
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -114,6 +119,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
+// باقي المسارات (اختصاراً)
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;

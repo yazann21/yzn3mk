@@ -13,7 +13,7 @@ const msalClient = new ConfidentialClientApplication(msalConfig);
 
 async function getAuthUrl() {
     const authUrlParams = {
-        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],
+        scopes: ['User.Read', 'offline_access', 'openid', 'profile'],  // تم إزالة XboxLive.signin
         redirectUri: process.env.REDIRECT_URI,
     };
     return await msalClient.getAuthCodeUrl(authUrlParams);
@@ -30,14 +30,14 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
     try {
-        // 1. جلب اسم المستخدم من مايكروسوفت
+        // 1. الحصول على معلومات مستخدم Microsoft
         const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
         
-        // 2. استخدام prismarine-auth للحصول على توكن ماينكرافت
+        // 2. استخدام AccessToken للحصول على توكن ماينكرافت عبر prismarine-auth
         const flow = new Authflow(`user_${username}`, './ms-cache', {
             authTitle: Titles.MinecraftJava,
             deviceType: 'Win32',
@@ -55,12 +55,7 @@ async function getMinecraftProfile(accessToken) {
         };
     } catch (error) {
         console.error('❌ فشل الحصول على توكن ماينكرافت:', error.message);
-        // في حالة الفشل، نستخدم اسم المستخدم فقط بدون توكن
-        return {
-            username: username || 'User',
-            minecraftToken: null,
-            minecraftProfile: null
-        };
+        throw error;
     }
 }
 
