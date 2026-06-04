@@ -6,114 +6,113 @@ const botLogs = new Map();
 const botStats = new Map();
 const botInventory = new Map();
 
-// المنفذ الأساسي للكاميرا (يبدأ من 8080)
+// المنفذ الأساسي للكاميرا
 const VIEWER_BASE_PORT = 8080;
 
-function startBot(botId, username, uuid, serverIp, botType, teamNames = '', version = '1.21.10', minecraftToken = null) {
-  // منفذ فريد لكل بوت: 8080 + معرف البوت
-  const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
+function startBot(botId, botName, mcToken, serverIp, botType, teamNames = '', version = '1.21.10') {
+    const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
 
-  const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), username, uuid, serverIp, botType, botId, teamNames, version], {
-    env: {
-      ...process.env,
-      MC_USERNAME: username,
-      MC_UUID: uuid,
-      SERVER_IP: serverIp,
-      BOT_TYPE: botType,
-      BOT_ID: botId,
-      TEAM_NAMES: teamNames,
-      MC_VERSION: version,
-      MC_TOKEN: minecraftToken || '',
-      VIEWER_PORT: viewerPort
-    },
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc']
-  });
+    // نمرر التوكن مباشرة إلى البوت
+    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botName, mcToken, serverIp, botType, botId, teamNames, version], {
+        env: {
+            ...process.env,
+            BOT_NAME: botName,
+            MC_TOKEN: mcToken,
+            SERVER_IP: serverIp,
+            BOT_TYPE: botType,
+            BOT_ID: botId,
+            TEAM_NAMES: teamNames,
+            MC_VERSION: version,
+            VIEWER_PORT: viewerPort
+        },
+        stdio: ['pipe', 'pipe', 'pipe', 'ipc']
+    });
 
-  const logs = [];
-  botLogs.set(botId, logs);
+    const logs = [];
+    botLogs.set(botId, logs);
 
-  botProcess.stdout.on('data', (d) => {
-    const msg = d.toString();
-    logs.push(msg);
-    console.log(`[Bot ${botId}] ${msg}`);
-  });
+    botProcess.stdout.on('data', (d) => {
+        const msg = d.toString();
+        logs.push(msg);
+        console.log(`[Bot ${botId}] ${msg}`);
+    });
 
-  botProcess.stderr.on('data', (d) => {
-    const msg = d.toString();
-    logs.push(`ERROR: ${msg}`);
-    console.error(`[Bot ${botId}] ${msg}`);
-  });
+    botProcess.stderr.on('data', (d) => {
+        const msg = d.toString();
+        logs.push(`ERROR: ${msg}`);
+        console.error(`[Bot ${botId}] ${msg}`);
+    });
 
-  botProcess.on('message', (msg) => {
-    if (msg.type === 'log') logs.push(msg.message);
-    if (msg.type === 'stats') botStats.set(botId, msg.stats);
-    if (msg.type === 'inventory') botInventory.set(botId, msg.inventory);
-  });
+    botProcess.on('message', (msg) => {
+        if (msg.type === 'log') logs.push(msg.message);
+        if (msg.type === 'stats') botStats.set(botId, msg.stats);
+        if (msg.type === 'inventory') botInventory.set(botId, msg.inventory);
+    });
 
-  botProcesses.set(botId, botProcess);
-  console.log(`✅ Bot ${botId} started with camera on port ${viewerPort}`);
+    botProcesses.set(botId, botProcess);
+    console.log(`✅ Bot ${botId} (${botName}) started with camera on port ${viewerPort}`);
 
-  return { process: botProcess, logs };
+    return { process: botProcess, logs };
 }
 
 function stopBot(botId) {
-  const p = botProcesses.get(botId);
-  if (p) {
-    p.kill();
-    botProcesses.delete(botId);
-    return true;
-  }
-  return false;
+    const p = botProcesses.get(botId);
+    if (p) {
+        p.kill();
+        botProcesses.delete(botId);
+        return true;
+    }
+    return false;
 }
 
 function getBotLogs(botId) {
-  return botLogs.get(botId) || [];
+    return botLogs.get(botId) || [];
 }
 
 function getBotStats(botId) {
-  return botStats.get(botId) || {
-    health: 20,
-    food: 20,
-    position: '0,0,0',
-    armor: 'لا يوجد',
-    weapon: 'لا يوجد',
-    level: 0,
-    kills: 0,
-    deaths: 0
-  };
+    return botStats.get(botId) || {
+        health: 20,
+        food: 20,
+        position: '0,0,0',
+        armor: 'لا يوجد',
+        weapon: 'لا يوجد',
+        level: 0,
+        kills: 0,
+        deaths: 0
+    };
 }
 
 function getBotInventory(botId) {
-  return botInventory.get(botId) || {
-    inventory: [],
-    helmet: 'فارغ',
-    chest: 'فارغ',
-    legs: 'فارغ',
-    boots: 'فارغ',
-    weapon: 'فارغ'
-  };
+    return botInventory.get(botId) || {
+        inventory: [],
+        helmet: 'فارغ',
+        chest: 'فارغ',
+        legs: 'فارغ',
+        boots: 'فارغ',
+        weapon: 'فارغ'
+    };
 }
 
 function deleteBot(botId) {
-  stopBot(botId);
-  botLogs.delete(botId);
-  botStats.delete(botId);
-  botInventory.delete(botId);
-  return true;
+    stopBot(botId);
+    botLogs.delete(botId);
+    botStats.delete(botId);
+    botInventory.delete(botId);
+    return true;
 }
 
 function sendCommand(botId, command, extra = null) {
-  const p = botProcesses.get(botId);
-  if (p) p.send({ type: 'command', command, extra });
+    const p = botProcesses.get(botId);
+    if (p) p.send({ type: 'command', command, extra });
 }
 
 module.exports = {
-  startBot,
-  stopBot,
-  getBotLogs,
-  getBotStats,
-  getBotInventory,
-  sendCommand,
-  deleteBot,
-  botProcesses
+    startBot,
+    stopBot,
+    getBotLogs,
+    getBotStats,
+    getBotInventory,
+    sendCommand,
+    deleteBot,
+    botProcesses
 };

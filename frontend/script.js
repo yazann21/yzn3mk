@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v3.8 – FINAL WORKING VERSION
+// BOT CRAFT v4.0 - نظام مستخدمين متكامل (تسجيل دخول محلي)
 // ========================================
 
 let currentUser = null;
@@ -38,46 +38,59 @@ document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
     initCharts();
     initColorPicker();
+    initAuthTabs();
     checkAuth();
 });
 
-// ---------- CHECK AUTH & REDIRECT ----------
-function checkAuth() {
-    const urlParams = new URLSearchParams(window.location.search);
-    // إذا كان هناك أي معامل يشير إلى العودة من المصادقة (مثل code أو state)
-    if (urlParams.has('code') || urlParams.has('session_state') || urlParams.has('login')) {
-        // نمسح الرابط من المعاملات
-        window.history.replaceState({}, document.title, '/');
-        // نطلب حالة المستخدم بعد نصف ثانية
-        setTimeout(() => {
-            fetch('/api/user', { credentials: 'include' })
-                .then(res => {
-                    if (res.status === 401) {
-                        showLogin();
-                        return null;
-                    }
-                    return res.json();
-                })
-                .then(user => {
-                    if (user && user.username) {
-                        currentUser = user;
-                        showApp();
-                        loadDashboard();
-                        loadBots();
-                    } else {
-                        showLogin();
-                    }
-                })
-                .catch(() => showLogin());
-        }, 500);
-        return;
-    }
+// ---------- علامات تبويب المصادقة ----------
+function initAuthTabs() {
+    const tabs = document.querySelectorAll('.auth-tab');
+    const panels = {
+        login: document.getElementById('loginPanel'),
+        register: document.getElementById('registerPanel')
+    };
+    // نافذة إعادة التعيين مخفية افتراضياً
+    const resetPanel = document.getElementById('resetPanel');
     
-    // التحقق العادي
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const target = tab.dataset.tab;
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            Object.values(panels).forEach(panel => panel?.classList.remove('active'));
+            if (target === 'login') panels.login?.classList.add('active');
+            if (target === 'register') panels.register?.classList.add('active');
+            if (resetPanel) resetPanel.style.display = 'none';
+        });
+    });
+    
+    // روابط إضافية
+    const forgotLink = document.getElementById('forgotPasswordLink');
+    const backToLogin = document.getElementById('backToLoginLink');
+    if (forgotLink) {
+        forgotLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            Object.values(panels).forEach(p => p?.classList.remove('active'));
+            if (resetPanel) resetPanel.style.display = 'flex';
+            tabs.forEach(t => t.classList.remove('active'));
+        });
+    }
+    if (backToLogin && resetPanel) {
+        backToLogin.addEventListener('click', (e) => {
+            e.preventDefault();
+            resetPanel.style.display = 'none';
+            panels.login?.classList.add('active');
+            document.querySelector('.auth-tab[data-tab="login"]')?.classList.add('active');
+        });
+    }
+}
+
+// ---------- التحقق من المصادقة ----------
+function checkAuth() {
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
             if (res.status === 401) {
-                showLogin();
+                showAuth();
                 return null;
             }
             return res.json();
@@ -89,54 +102,87 @@ function checkAuth() {
                 loadDashboard();
                 loadBots();
             } else {
-                showLogin();
+                showAuth();
             }
         })
-        .catch(err => {
-            console.error('fetchUser error:', err);
-            showLogin();
-        });
+        .catch(() => showAuth());
 }
 
-function showLogin() {
-    document.getElementById('loginOverlay').style.display = 'flex';
+function showAuth() {
+    document.getElementById('authOverlay').style.display = 'flex';
     document.getElementById('appWrapper').style.display = 'none';
 }
 
 function showApp() {
-    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('authOverlay').style.display = 'none';
     document.getElementById('appWrapper').style.display = 'flex';
-    // التحقق من وجود العناصر قبل تعيين القيم
-    if (document.getElementById('sidebarUsername')) document.getElementById('sidebarUsername').innerHTML = currentUser.username;
-    if (document.getElementById('settingsUsername')) document.getElementById('settingsUsername').innerHTML = currentUser.username;
-    if (document.getElementById('settingsUuid')) document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
-    if (document.getElementById('welcomeUsername')) document.getElementById('welcomeUsername').innerHTML = currentUser.username;
-    const mcStatus = document.getElementById('mcAccountStatus');
-    if (mcStatus) {
-        mcStatus.innerHTML = currentUser.isRealMinecraft ? '✅ حساب ماينكرافت حقيقي' : '⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت';
-        mcStatus.style.color = currentUser.isRealMinecraft ? '#22c55e' : '#f59e0b';
-    }
+    document.getElementById('sidebarUsername').innerHTML = currentUser.username;
+    document.getElementById('settingsUsername').innerHTML = currentUser.username;
+    document.getElementById('settingsEmail').innerHTML = currentUser.email || '';
+    document.getElementById('welcomeUsername').innerHTML = currentUser.username;
 }
 
 function logout() {
     fetch('/api/logout', { method: 'POST', credentials: 'include' }).then(() => {
         currentUser = null;
-        showLogin();
+        showAuth();
     });
 }
 
-// ---------- باقي الدوال كما هي ولكن مع تجنب الأخطاء ----------
+// ---------- تسجيل الدخول والتسجيل ----------
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
-    document.getElementById('loginMicrosoftBtn')?.addEventListener('click', () => {
-        fetch('/auth/login', { credentials: 'include' })
-            .then(res => res.json())
-            .then(data => { if (data.url) window.location.href = data.url; });
+    
+    // تسجيل الدخول
+    document.getElementById('loginBtn')?.addEventListener('click', () => {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ email, password })
+        }).then(res => res.json()).then(data => {
+            if (data.error) alert(data.error);
+            else { currentUser = data; showApp(); loadDashboard(); loadBots(); }
+        });
     });
-    document.getElementById('createBotType')?.addEventListener('change', toggleTeamField);
+    
+    // تسجيل حساب جديد
+    document.getElementById('registerBtn')?.addEventListener('click', () => {
+        const username = document.getElementById('regUsername').value;
+        const email = document.getElementById('regEmail').value;
+        const password = document.getElementById('regPassword').value;
+        const confirm = document.getElementById('regConfirmPassword').value;
+        if (password !== confirm) return alert('كلمة المرور غير متطابقة');
+        fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ username, email, password })
+        }).then(res => res.json()).then(data => {
+            if (data.error) alert(data.error);
+            else { alert('تم إنشاء الحساب بنجاح! قم بتسجيل الدخول'); }
+        });
+    });
+    
+    // إعادة تعيين كلمة المرور (وهمي حالياً)
+    document.getElementById('resetPasswordBtn')?.addEventListener('click', () => {
+        const email = document.getElementById('resetEmail').value;
+        if (!email) return alert('أدخل بريدك الإلكتروني');
+        fetch('/api/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        }).then(res => res.json()).then(data => {
+            alert(data.message || 'تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني');
+        }).catch(() => alert('حدث خطأ، حاول لاحقاً'));
+    });
+    
+    // باقي الأحداث (نفس السابق)
+    document.getElementById('createBotType')?.addEventListener('change', () => {});
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
-        const teamRow = document.getElementById('editTeamGroup');
-        if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
+        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
     });
     document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -209,10 +255,6 @@ function showServerWarning(serverName) {
 }
 
 function hideServerWarning() { const w = document.getElementById('serverWarning'); if (w) w.remove(); }
-
-function toggleTeamField() {
-    document.getElementById('teamInputGroup').style.display = document.getElementById('createBotType').value === 'hunter' ? 'block' : 'none';
-}
 
 function initCharts() {
     const ctx1 = document.getElementById('activityChart')?.getContext('2d');
@@ -290,6 +332,7 @@ function renderBots() {
             <div class="bot-actions" onclick="event.stopPropagation()">
                 ${b.status === 'online' ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>` : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`}
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
+                <button class="btn-verify" onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
                 <button class="btn-delete" onclick="deleteBot(${b.id})"><i class="fas fa-trash"></i> حذف</button>
@@ -298,48 +341,48 @@ function renderBots() {
     `).join('');
 }
 
+// زر التحقق من حساب البوت
+function verifyBotAccount(botId) {
+    fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.url) {
+                // فتح نافذة جديدة لمصادقة ماينكرافت
+                window.open(data.url, '_blank', 'width=800,height=600');
+                alert('تم فتح نافذة المصادقة. قم بتسجيل الدخول بحساب ماينكرافت الخاص بهذا البوت.');
+            } else if (data.message) {
+                alert(data.message);
+            } else {
+                alert('تم التحقق من الحساب بنجاح!');
+            }
+        })
+        .catch(() => alert('حدث خطأ أثناء محاولة التحقق'));
+}
+
 function startBot(id) {
-    if (!currentUser.isRealMinecraft && !confirm('⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت. قد لا يعمل البوت. تابع؟')) return;
     fetch('/api/start-cloud-bot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
-        if (data.error === 'need_minecraft_auth') alert('⚠️ لا يمكن تشغيل البوت: حساب مايكروسوفت غير مرتبط بماينكرافت حقيقي.');
+        if (data.error === 'need_minecraft_auth') alert('⚠️ يجب التحقق من حساب البوت أولاً (اضغط زر تحقق)');
         else { loadBots(); loadDashboard(); }
     });
 }
 
+// باقي الدوال (stopBot, restartBot, deleteBot, openEditModal, saveEditBot, createBotForm, logs, camera, control) كما هي مع إضافة credentials
 function stopBot(id) {
-    fetch('/api/stop-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ botId: parseInt(id) })
-    }).then(() => { loadBots(); loadDashboard(); });
+    fetch('/api/stop-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: parseInt(id) }) }).then(() => { loadBots(); loadDashboard(); });
 }
-
 function restartBot(id) {
-    fetch('/api/restart-bot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ botId: parseInt(id) })
-    }).then(() => setTimeout(() => { loadBots(); loadDashboard(); }, 2000));
+    fetch('/api/restart-bot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: parseInt(id) }) }).then(() => setTimeout(() => { loadBots(); loadDashboard(); }, 2000));
 }
-
 function deleteBot(id) {
-    if (confirm('حذف البوت؟')) {
-        fetch('/api/delete-bot', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ botId: parseInt(id) })
-        }).then(() => { loadBots(); loadDashboard(); });
+    if (confirm('حذف البوت نهائياً؟')) {
+        fetch('/api/delete-bot', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: parseInt(id) }) }).then(() => { loadBots(); loadDashboard(); });
     }
 }
-
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
@@ -352,9 +395,7 @@ function openEditModal(id) {
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
     document.getElementById('editModal').style.display = 'flex';
 }
-
 function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
-
 function saveEditBot() {
     fetch('/api/update-bot', {
         method: 'PUT',
@@ -370,7 +411,6 @@ function saveEditBot() {
         })
     }).then(() => { closeEditModal(); loadBots(); });
 }
-
 document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
     e.preventDefault();
     fetch('/api/create-bot-cloud', {
@@ -381,22 +421,21 @@ document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
             botName: document.getElementById('createBotName').value,
             botType: document.getElementById('createBotType').value,
             serverIp: document.getElementById('createServerIp').value,
-            teamNames: document.getElementById('createTeamNames').value,
-            version: document.getElementById('createVersion').value
+            teamNames: '',
+            version: document.getElementById('createVersion').value,
+            mcEmail: document.getElementById('createMcEmail').value,
+            mcPassword: document.getElementById('createMcPassword').value
         })
     }).then(res => res.json()).then(data => {
         if (data.error) alert('خطأ: ' + data.error);
         else { alert('تم إنشاء البوت'); navigateTo('bots'); }
     });
 });
-
 function openCameraViewer(botId) {
     const viewerPort = 8080 + parseInt(botId);
     window.open(`http://localhost:${viewerPort}`, '_blank', 'width=1200,height=800');
 }
-
 function closeCameraModal() { document.getElementById('cameraModal').style.display = 'none'; }
-
 function openLogs(id) {
     currentLogsBotId = id;
     document.getElementById('logsModal').style.display = 'flex';
@@ -408,7 +447,6 @@ function openLogs(id) {
 function closeLogs() { if (logsInterval) clearInterval(logsInterval); document.getElementById('logsModal').style.display = 'none'; }
 function refreshLogs() { if (currentLogsBotId) fetch(`/api/bot-logs/${currentLogsBotId}`, { credentials: 'include' }).then(res => res.json()).then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); }); }
 function clearLogs() { if (currentLogsBotId) fetch(`/api/clear-logs/${currentLogsBotId}`, { method: 'POST', credentials: 'include' }).catch(console.error); refreshLogs(); }
-
 function openBotControl(id, name) {
     controlBotId = id;
     document.getElementById('controlTitle').innerHTML = `🎮 التحكم بـ ${name}`;
@@ -430,7 +468,6 @@ function selectSlot(slot) { selectedSlot = slot; renderInventory(); }
 function refreshInventory() { if (controlBotId) fetchInventory(controlBotId); }
 function sendCommand(cmd, extra = null) { if (!controlBotId) return; fetch('/api/bot-command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ botId: controlBotId, command: cmd, extra }) }); }
 function sendChatMessage() { const msg = document.getElementById('chatInput')?.value; if (!msg) return; sendCommand('chat', msg); document.getElementById('chatInput').value = ''; }
-
 document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => {
     const cmd = btn.dataset.cmd || btn.dataset.recipe;
     if (cmd) btn.addEventListener('click', () => {
@@ -438,7 +475,6 @@ document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => 
         else if (btn.dataset.recipe) sendCommand('craft', btn.dataset.recipe);
     });
 });
-
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const tab = btn.dataset.tab;
@@ -448,32 +484,24 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.getElementById(`${tab}Tab`).classList.add('active');
     });
 });
-
 function loadAnalytics() {
-    fetch('/api/bots', { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            const bots = data.bots || [];
-            document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1';
-            document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0';
-            let totalKills = 0, totalDeaths = 0;
-            Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})))).then(statsArray => {
-                statsArray.forEach(stat => {
-                    totalKills += stat.kills || 0;
-                    totalDeaths += stat.deaths || 0;
-                });
-                document.getElementById('analyticsKills').innerHTML = totalKills;
-                document.getElementById('analyticsDeaths').innerHTML = totalDeaths;
-            });
+    fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
+        const bots = data.bots || [];
+        document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1';
+        document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0';
+        let totalKills = 0, totalDeaths = 0;
+        Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})))).then(statsArray => {
+            statsArray.forEach(stat => { totalKills += stat.kills || 0; totalDeaths += stat.deaths || 0; });
+            document.getElementById('analyticsKills').innerHTML = totalKills;
+            document.getElementById('analyticsDeaths').innerHTML = totalDeaths;
         });
+    });
 }
-
 function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
 function populateVersions(selectId) { const select = document.getElementById(selectId); if (select) select.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join(''); }
 populateVersions('createVersion');
 populateVersions('editVersion');
 
-// تعريف الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
@@ -492,3 +520,4 @@ window.refreshLogs = refreshLogs;
 window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
 window.navigateTo = navigateTo;
+window.verifyBotAccount = verifyBotAccount;

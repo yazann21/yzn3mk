@@ -1,84 +1,95 @@
-const { ConfidentialClientApplication } = require('@azure/msal-node');
-const { Authflow, Titles } = require('prismarine-auth');
+const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 
-// إعدادات تطبيق Azure
-const msalConfig = {
-    auth: {
-        clientId: process.env.CLIENT_ID,
-        authority: 'https://login.microsoftonline.com/consumers',
-        clientSecret: process.env.CLIENT_SECRET,
-    }
-};
-const msalClient = new ConfidentialClientApplication(msalConfig);
+// محاكاة تخزين رموز التحقق مؤقتاً (في الإنتاج، استخدم قاعدة بيانات)
+const verificationCodes = new Map(); // key: email, value: { code, expires }
 
 /**
- * 1. يُنشئ رابط تسجيل الدخول إلى مايكروسوفت (باستخدام MSAL)
+ * توليد رمز تحقق عشوائي مكون من 6 أرقام
+ */
+function generateVerificationCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/**
+ * إرسال رمز التحقق إلى البريد الإلكتروني (وهمي حالياً، يمكن استبداله بـ nodemailer)
+ * في هذه المرحلة، سنقوم فقط بطباعة الرمز في سجل الخادم وعرضه للمستخدم
+ */
+async function sendVerificationCode(email, code) {
+    console.log(`📧 Verification code for ${email}: ${code}`);
+    // في المستقبل، يمكن إضافة إرسال بريد حقيقي عبر nodemailer أو sendgrid
+    return true;
+}
+
+/**
+ * طلب رمز تحقق لتسجيل حساب جديد
+ * @returns {Promise<{success: boolean, message?: string}>}
+ */
+async function requestVerificationCode(email) {
+    if (!email) return { success: false, message: 'البريد الإلكتروني مطلوب' };
+    
+    const code = generateVerificationCode();
+    const expires = Date.now() + 10 * 60 * 1000; // 10 دقائق صلاحية
+    verificationCodes.set(email, { code, expires });
+    
+    const sent = await sendVerificationCode(email, code);
+    if (sent) {
+        return { success: true, message: 'تم إرسال رمز التحقق إلى بريدك الإلكتروني' };
+    } else {
+        return { success: false, message: 'فشل إرسال رمز التحقق' };
+    }
+}
+
+/**
+ * التحقق من صحة الرمز المدخل
+ */
+function verifyCode(email, code) {
+    const record = verificationCodes.get(email);
+    if (!record) return false;
+    if (record.code !== code) return false;
+    if (Date.now() > record.expires) return false;
+    verificationCodes.delete(email);
+    return true;
+}
+
+/**
+ * إنشاء مستخدم جديد (بدون مصادقة مايكروسوفت)
+ * ملاحظة: هذه الدالة تستخدم فقط في مسار /api/register
+ * لا يتم استخدامها في مصادقة OAuth
+ */
+async function registerUser(username, email, password, verificationCode) {
+    if (!verifyCode(email, verificationCode)) {
+        return { success: false, message: 'رمز التحقق غير صحيح أو منتهي الصلاحية' };
+    }
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    // هذه الدالة سيتم استدعاؤها من server.js حيث يتم التعامل مع قاعدة البيانات
+    return { success: true, hashedPassword };
+}
+
+/**
+ * هذه الدوال الثلاث التالية مطلوبة للتوافق مع بقية النظام
+ * لكننا لن نستخدمها في المصادقة المحلية (تبقى لإرضاء المتطلبات)
  */
 async function getAuthUrl() {
-    const authUrlParams = {
-        scopes: ['XboxLive.signin', 'offline_access', 'openid', 'profile'],
-        redirectUri: process.env.REDIRECT_URI,
-    };
-    try {
-        const authUrl = await msalClient.getAuthCodeUrl(authUrlParams);
-        return authUrl;
-    } catch (error) {
-        console.error('Error generating auth URL:', error);
-        throw error;
-    }
+    throw new Error('Microsoft authentication is disabled. Use local login.');
 }
 
-/**
- * 2. يستبدل الكود بـ Access Token (باستخدام MSAL)
- */
 async function getTokenFromCode(code) {
-    const tokenRequest = {
-        code: code,
-        scopes: ['XboxLive.signin', 'offline_access', 'openid', 'profile'],
-        redirectUri: process.env.REDIRECT_URI,
-    };
-    const response = await msalClient.acquireTokenByCode(tokenRequest);
-    return { accessToken: response.accessToken };
+    throw new Error('Microsoft authentication is disabled.');
 }
 
-/**
- * 3. يحصل على معلومات ماينكرافت الحقيقية (باستخدام prismarine-auth)
- */
 async function getMinecraftProfile(accessToken) {
-    try {
-        // تعريف مستخدم مؤقت لـ prismarine-auth
-        const userIdentifier = `minecraft_user_${crypto.randomBytes(8).toString('hex')}`;
-        // إنشاء كائن Authflow باستخدام الـ accessToken الذي حصلنا عليه من MSAL
-        const flow = new Authflow(userIdentifier, './ms-cache', {
-            authTitle: Titles.MinecraftJava,
-            deviceType: 'Win32',
-            flow: 'msal'
-        });
-
-        // الحصول على بيانات حساب ماينكرافت
-        const minecraftToken = await flow.getMinecraftJavaToken({ accessToken });
-        const uuid = minecraftToken.profile.id;
-        const username = minecraftToken.profile.name;
-
-        console.log(`✅ ماينكرافت حقيقي: ${username} (UUID: ${uuid})`);
-        return {
-            uuid: uuid,
-            username: username,
-            minecraftToken: minecraftToken.token,
-            isRealMinecraft: true
-        };
-    } catch (error) {
-        console.error('❌ فشل الحصول على بيانات ماينكرافت:', error.message);
-        // في حالة الفشل (مثلاً الحساب لا يملك Minecraft)، ننشئ بيانات مؤقتة
-        const tempId = `temp-${crypto.randomBytes(8).toString('hex')}`;
-        return {
-            uuid: tempId,
-            username: `TempUser_${tempId.substring(0, 6)}`,
-            minecraftToken: 'temp-token',
-            isRealMinecraft: false
-        };
-    }
+    throw new Error('Microsoft authentication is disabled.');
 }
 
-module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };
+module.exports = {
+    // دوال المصادقة المحلية
+    requestVerificationCode,
+    verifyCode,
+    registerUser,
+    // للتوافق مع النظام القديم (لكن لا تستخدم)
+    getAuthUrl,
+    getTokenFromCode,
+    getMinecraftProfile
+};

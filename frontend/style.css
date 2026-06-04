@@ -1,6 +1,6 @@
 /* ========================================
    BOT CRAFT - PROFESSIONAL MINECRAFT BOT CONTROLLER
-   تصميم احترافي فاخر | أكثر من 2000 سطر
+   التصميم النهائي - يدعم نظام المصادقة المحلي
    ======================================== */
 
 /* ========== Reset & Base ========== */
@@ -88,8 +88,8 @@ body {
     letter-spacing: 2px;
 }
 
-/* ========== Glass Effect (زجاجي فاخر) ========== */
-.glass, .glass-sidebar, .glass-header, .stat-card, .card, .settings-section {
+/* ========== Glass Effect ========== */
+.glass, .glass-sidebar, .glass-header, .stat-card, .card, .settings-section, .create-form-wrapper {
     background: var(--card-bg);
     backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
@@ -103,7 +103,7 @@ body {
 /* ========== App Wrapper ========== */
 .app-wrapper { display: flex; min-height: 100vh; }
 
-/* ========== Sidebar فاخر ========== */
+/* ========== Sidebar ========== */
 .glass-sidebar {
     width: 280px;
     display: flex;
@@ -310,21 +310,6 @@ body {
 }
 .header-search input:focus { outline: none; border-color: var(--primary); width: 300px; }
 
-.header-notifications {
-    position: relative;
-    cursor: pointer;
-}
-.header-notifications i { font-size: 20px; color: var(--text-secondary); }
-.notif-badge {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    background: var(--danger);
-    font-size: 10px;
-    padding: 2px 5px;
-    border-radius: 10px;
-}
-
 /* ========== Pages ========== */
 .page { display: none; animation: fadeInUp 0.4s ease; }
 .page.active { display: block; }
@@ -453,7 +438,7 @@ body {
 
 .activity-skeleton { text-align: center; padding: 30px; color: var(--text-muted); }
 
-/* ========== Bots Grid (فاخر) ========== */
+/* ========== Bots Grid ========== */
 .bots-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -575,7 +560,7 @@ body {
 }
 .btn-float:hover { transform: translateY(-2px); box-shadow: var(--shadow-glow); }
 
-/* ========== Create Page فاخر ========== */
+/* ========== Create Page ========== */
 .create-container {
     max-width: 700px;
     margin: 0 auto;
@@ -612,7 +597,7 @@ body {
     margin-bottom: 20px;
 }
 
-/* ========== Floating Inputs (فاخر) ========== */
+/* ========== Floating Inputs ========== */
 .input-group {
     position: relative;
     margin-bottom: 24px;
@@ -795,7 +780,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .stat-detailed-value { font-size: 28px; font-weight: 700; }
 .stat-detailed-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
-/* ========== Modal Glass (فاخر) ========== */
+/* ========== Modal Glass ========== */
 .modal-glass {
     position: fixed;
     top: 0;
@@ -887,7 +872,7 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     background: #0a0a1a;
 }
 
-/* ========== Login Screen فاخر ========== */
+/* ========== شاشة المصادقة (تسجيل الدخول والتسجيل) ========== */
 .login-overlay {
     position: fixed;
     top: 0;
@@ -924,13 +909,46 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .login-icon i { font-size: 40px; }
 .login-logo h2 { font-size: 32px; background: linear-gradient(135deg, #fff, var(--primary-light)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .login-logo span { color: var(--primary); -webkit-text-fill-color: var(--primary); }
-.login-card p { color: var(--text-secondary); margin-bottom: 32px; }
+
+.auth-tabs {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 12px;
+    justify-content: center;
+}
+.auth-tab {
+    background: transparent;
+    border: none;
+    padding: 6px 20px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    border-radius: 40px;
+}
+.auth-tab:hover { color: var(--primary-light); background: rgba(168, 85, 247, 0.1); }
+.auth-tab.active { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; box-shadow: var(--shadow-glow); }
+
+.auth-panel { display: none; flex-direction: column; gap: 20px; margin-top: 10px; }
+.auth-panel.active { display: flex; }
+
+.forgot-link {
+    color: var(--text-muted);
+    font-size: 13px;
+    text-decoration: none;
+    margin-top: 8px;
+    transition: var(--transition-smooth);
+}
+.forgot-link:hover { color: var(--primary-light); }
 
 .login-btn-glow {
     background: linear-gradient(135deg, var(--primary), var(--primary-light));
     border: none;
-    padding: 16px 32px;
-    border-radius: 60px;
+    padding: 12px;
+    border-radius: 40px;
     color: white;
     font-size: 16px;
     font-weight: 600;
@@ -939,8 +957,9 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
     transition: var(--transition-smooth);
+    margin-top: 8px;
 }
 .login-btn-glow:hover { transform: translateY(-2px); box-shadow: var(--shadow-glow); }
 
@@ -948,14 +967,15 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     display: flex;
     justify-content: center;
     gap: 20px;
-    margin: 32px 0;
+    margin: 32px 0 16px;
     font-size: 13px;
     color: var(--text-secondary);
+    flex-wrap: wrap;
 }
 .login-features i { color: var(--success); margin-right: 6px; }
 .login-card small { color: var(--text-muted); font-size: 12px; }
 
-/* ========== إضافات التحكم المتقدم (controlModal) ========== */
+/* ========== تحكم متقدم ========== */
 .control-tabs {
     display: flex;
     gap: 8px;
@@ -971,165 +991,32 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     cursor: pointer;
     transition: var(--transition-smooth);
 }
-.tab-btn.active {
-    background: var(--primary);
-    color: white;
-}
-.tab-pane {
-    display: none;
-    padding: 20px;
-}
-.tab-pane.active {
-    display: block;
-}
-.control-body {
-    display: grid;
-    grid-template-columns: 1fr 300px;
-    gap: 20px;
-}
-.camera-area {
-    background: #0a0a1a;
-    border-radius: 12px;
-    overflow: hidden;
-}
-.camera-header {
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border-bottom: 1px solid var(--glass-border);
-    font-size: 14px;
-}
-.stats-area {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    padding: 16px;
-}
-.stat-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    font-size: 13px;
-}
-.movement-buttons, .action-buttons, .chat-area {
-    margin-top: 20px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    padding: 16px;
-}
-.move-grid, .action-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 10px;
-}
-.move-btn, .action-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    padding: 6px 12px;
-    border-radius: 6px;
-    color: white;
-    cursor: pointer;
-    transition: all 0.1s;
-}
-.move-btn:active, .action-btn:active {
-    transform: scale(0.95);
-    background: var(--primary);
-}
-.chat-input {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    padding: 8px 16px;
-    color: white;
-    margin-right: 8px;
-}
-.inventory-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-}
-.armor-stats {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 12px;
-    padding: 12px;
-    margin-bottom: 16px;
-}
-.inventory-grid {
-    display: grid;
-    grid-template-columns: repeat(9, 1fr);
-    gap: 6px;
-    margin-top: 16px;
-}
-.inv-slot {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--glass-border);
-    border-radius: 8px;
-    padding: 8px;
-    text-align: center;
-    font-size: 10px;
-    cursor: pointer;
-    transition: var(--transition-smooth);
-}
-.inv-slot:hover {
-    background: rgba(124, 58, 237, 0.3);
-    transform: scale(1.02);
-}
-.inv-slot.selected {
-    background: var(--primary);
-    border-color: white;
-}
-.crafting-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 80px);
-    gap: 10px;
-    justify-content: center;
-    margin: 16px 0;
-}
-.craft-slot {
-    width: 80px;
-    height: 80px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-}
-.recipes-list {
-    margin-top: 20px;
-}
-.recipe-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    padding: 6px 12px;
-    border-radius: 20px;
-    margin: 4px;
-    cursor: pointer;
-    transition: var(--transition-smooth);
-}
-.recipe-btn:hover {
-    background: var(--primary);
-}
-.info-card {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 16px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-.info-card div {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
+.tab-btn.active { background: var(--primary); color: white; }
+.tab-pane { display: none; padding: 20px; }
+.tab-pane.active { display: block; }
+.control-body { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+.camera-area { background: #0a0a1a; border-radius: 12px; overflow: hidden; }
+.camera-header { padding: 10px; background: rgba(0, 0, 0, 0.3); border-bottom: 1px solid var(--glass-border); font-size: 14px; }
+.stats-area { background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 16px; }
+.stat-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; }
+.movement-buttons, .action-buttons, .chat-area { margin-top: 20px; background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 16px; }
+.move-grid, .action-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.move-btn, .action-btn { background: rgba(255, 255, 255, 0.1); border: none; padding: 6px 12px; border-radius: 6px; color: white; cursor: pointer; transition: all 0.1s; }
+.move-btn:active, .action-btn:active { transform: scale(0.95); background: var(--primary); }
+.chat-input { flex: 1; background: rgba(0, 0, 0, 0.5); border: 1px solid var(--glass-border); border-radius: 20px; padding: 8px 16px; color: white; margin-right: 8px; }
+.inventory-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.armor-stats { display: flex; gap: 16px; flex-wrap: wrap; background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 12px; margin-bottom: 16px; }
+.inventory-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 6px; margin-top: 16px; }
+.inv-slot { background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-border); border-radius: 8px; padding: 8px; text-align: center; font-size: 10px; cursor: pointer; transition: var(--transition-smooth); }
+.inv-slot:hover { background: rgba(124, 58, 237, 0.3); transform: scale(1.02); }
+.inv-slot.selected { background: var(--primary); border-color: white; }
+.crafting-grid { display: grid; grid-template-columns: repeat(3, 80px); gap: 10px; justify-content: center; margin: 16px 0; }
+.craft-slot { width: 80px; height: 80px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-border); border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.recipes-list { margin-top: 20px; }
+.recipe-btn { background: rgba(255, 255, 255, 0.1); border: none; padding: 6px 12px; border-radius: 20px; margin: 4px; cursor: pointer; transition: var(--transition-smooth); }
+.recipe-btn:hover { background: var(--primary); }
+.info-card { background: rgba(0, 0, 0, 0.3); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.info-card div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
 
 /* ========== Responsive ========== */
 @media (max-width: 1024px) {
@@ -1138,7 +1025,6 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .dashboard-grid { grid-template-columns: 1fr; }
     .control-body { grid-template-columns: 1fr; }
 }
-
 @media (max-width: 768px) {
     .glass-sidebar { transform: translateX(-100%); position: fixed; width: 280px; }
     .glass-sidebar.open { transform: translateX(0); }
@@ -1147,16 +1033,14 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .header-search input { width: 180px; }
     .stats-grid { grid-template-columns: 1fr; }
     .bots-grid { grid-template-columns: 1fr; }
-    .filter-group { width: 100%; }
+    .filter-group { width: 100%; flex-direction: column; }
     .search-box input { width: 100%; }
     .form-row { grid-template-columns: 1fr; }
     .settings-container { grid-template-columns: 1fr; }
-    .dashboard-grid { grid-template-columns: 1fr; }
     .inventory-grid { grid-template-columns: repeat(6, 1fr); }
     .crafting-grid { grid-template-columns: repeat(3, 60px); }
     .craft-slot { width: 60px; height: 60px; }
 }
-
 @media (max-width: 480px) {
     .header-right { width: 100%; justify-content: space-between; }
     .login-card { padding: 30px 20px; }
@@ -1164,15 +1048,6 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .bot-card { padding: 15px; }
     .inventory-grid { grid-template-columns: repeat(4, 1fr); }
 }
-
-/* ========== Animations ========== */
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .pulse { animation: pulse 2s infinite; }
-
-@keyframes shimmer {
-    0% { background-position: -1000px 0; }
-    100% { background-position: 1000px 0; }
-}
+@keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
