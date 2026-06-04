@@ -10,7 +10,7 @@ const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 
 const app = express();
-const PORT = process.env.PORT || 3000; // تأكد من أنه 3000
+const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
@@ -42,10 +42,8 @@ db.serialize(() => {
 app.get('/auth/login', async (req, res) => {
   try {
     const url = await getAuthUrl();
-    console.log('✅ Generated auth URL:', url);
     res.json({ url });
   } catch (error) {
-    console.error('Error in /auth/login:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -54,37 +52,43 @@ app.get('/auth/login', async (req, res) => {
 app.get('/auth/callback', async (req, res) => {
   const { code } = req.query;
   if (!code) return res.status(400).send('No code provided');
-  console.log('🔑 Received auth code');
-
   try {
     const { accessToken } = await getTokenFromCode(code);
-    console.log('✅ Access token obtained');
-    
     const { uuid, username, minecraftToken, isRealMinecraft } = await getMinecraftProfile(accessToken);
-    console.log(`✅ User profile: ${username}`);
 
     db.run(`INSERT INTO users (microsoft_id, username, uuid, minecraft_token, is_real) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(microsoft_id) DO UPDATE SET username = excluded.username, uuid = excluded.uuid, minecraft_token = excluded.minecraft_token, is_real = excluded.is_real`,
       [uuid, username, uuid, minecraftToken, isRealMinecraft ? 1 : 0],
       function(err) {
-        if (err) {
-          console.error('❌ Database error:', err);
-          return res.status(500).send('Database error');
-        }
+        if (err) return res.status(500).send('Database error');
         req.session.userId = uuid;
         req.session.username = username;
         req.session.minecraftToken = minecraftToken;
         req.session.isRealMinecraft = isRealMinecraft;
-        req.session.save((err) => {
-          if (err) console.error('❌ Session save error:', err);
-          console.log('✅ Session saved, redirecting to /');
-          res.redirect('/');
+        req.session.save(() => {
+          // إعادة التوجيه إلى صفحة وسيطة تقوم بالتحقق
+          res.redirect('/auth/success');
         });
       });
   } catch (error) {
-    console.error('❌ Auth callback error:', error);
+    console.error('Auth callback error:', error);
     res.status(500).send('Authentication failed: ' + error.message);
   }
+});
+
+// صفحة وسيطة لتأكيد الجلسة قبل الانتقال إلى الصفحة الرئيسية
+app.get('/auth/success', (req, res) => {
+  if (!req.session.userId) return res.redirect('/');
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head><title>Redirecting...</title><script>
+      // الانتقال إلى الصفحة الرئيسية مع إجبار إعادة التحميل
+      window.location.href = '/';
+    </script></head>
+    <body>Please wait...</body>
+    </html>
+  `);
 });
 
 // API للتحقق من المستخدم
@@ -101,7 +105,7 @@ app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ success: true }));
 });
 
-// باقي مسارات API (كما هي، بدون تغيير)
+// باقي المسارات (مختصرة للاختصار، لكنها كما هي)
 app.get('/api/bots', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -125,7 +129,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
 app.post('/api/start-cloud-bot', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
   if (!req.session.isRealMinecraft) {
-    return res.status(400).json({ error: 'need_minecraft_auth', message: 'حساب مايكروسوفت غير مرتبط بحساب ماينكرافت حقيقي' });
+    return res.status(400).json({ error: 'need_minecraft_auth' });
   }
   const { botId } = req.body;
   db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {

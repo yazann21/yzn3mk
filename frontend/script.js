@@ -1,6 +1,5 @@
 // ========================================
-// BOT CRAFT - PROFESSIONAL SCRIPT v3.3
-// مع دعم إرسال الكوكيز عبر credentials
+// BOT CRAFT v3.5 - WORKING WITH CREDENTIALS & REDIRECT
 // ========================================
 
 let currentUser = null;
@@ -30,8 +29,8 @@ const specialServerVersions = {
     'donut': '1.21.10'
 };
 
-// ---------- تهيئة الصفحة ----------
-document.addEventListener('DOMContentLoaded', function() {
+// ---------- INIT ----------
+document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         document.getElementById('loadingOverlay').style.display = 'none';
         document.getElementById('appWrapper').style.display = 'flex';
@@ -42,14 +41,16 @@ document.addEventListener('DOMContentLoaded', function() {
     checkAuth();
 });
 
-// ---------- التحقق من المصادقة (مع إرسال الكوكيز) ----------
 function checkAuth() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('nocache')) {
+        window.history.replaceState({}, document.title, '/');
+        window.location.reload();
+        return;
+    }
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
-            if (res.status === 401) {
-                showLogin();
-                return null;
-            }
+            if (!res.ok) throw new Error('Not logged in');
             return res.json();
         })
         .then(user => {
@@ -58,7 +59,7 @@ function checkAuth() {
                 showApp();
                 loadDashboard();
                 loadBots();
-            } else if (!user) {
+            } else {
                 showLogin();
             }
         })
@@ -77,16 +78,10 @@ function showApp() {
     document.getElementById('settingsUsername').innerHTML = currentUser.username;
     document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
     document.getElementById('welcomeUsername').innerHTML = currentUser.username;
-    
     const mcStatus = document.getElementById('mcAccountStatus');
     if (mcStatus) {
-        if (currentUser.isRealMinecraft) {
-            mcStatus.innerHTML = '✅ حساب ماينكرافت حقيقي';
-            mcStatus.style.color = '#22c55e';
-        } else {
-            mcStatus.innerHTML = '⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت. قد لا تعمل البوتات.';
-            mcStatus.style.color = '#f59e0b';
-        }
+        mcStatus.innerHTML = currentUser.isRealMinecraft ? '✅ حساب ماينكرافت حقيقي' : '⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت';
+        mcStatus.style.color = currentUser.isRealMinecraft ? '#22c55e' : '#f59e0b';
     }
 }
 
@@ -99,38 +94,29 @@ function logout() {
 
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
-    
     document.getElementById('loginMicrosoftBtn')?.addEventListener('click', () => {
         fetch('/auth/login', { credentials: 'include' })
             .then(res => res.json())
             .then(data => { if (data.url) window.location.href = data.url; });
     });
-    
     document.getElementById('createBotType')?.addEventListener('change', toggleTeamField);
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
-        const teamRow = document.getElementById('editTeamGroup');
-        if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
+        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
     });
-    
     document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
-    
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             navigateTo(link.dataset.page);
         });
     });
-    
     document.getElementById('mobileMenuToggle')?.addEventListener('click', () => {
         document.querySelector('.glass-sidebar').classList.toggle('open');
     });
-    
     document.getElementById('createBotFloatBtn')?.addEventListener('click', () => navigateTo('create'));
-    
     document.getElementById('filterStatus')?.addEventListener('change', () => renderBots());
     document.getElementById('filterType')?.addEventListener('change', () => renderBots());
     document.getElementById('botSearch')?.addEventListener('input', () => renderBots());
-    
     document.getElementById('darkModeToggle')?.addEventListener('change', (e) => {
         if (!e.target.checked) {
             document.body.style.background = '#f0f0f0';
@@ -140,7 +126,6 @@ function initEventListeners() {
             document.body.style.color = '#ffffff';
         }
     });
-    
     setInterval(() => {
         if (document.getElementById('dashboardPage')?.classList.contains('active')) loadDashboard();
         if (document.getElementById('botsPage')?.classList.contains('active')) loadBots();
@@ -190,7 +175,9 @@ function showServerWarning(serverName) {
 
 function hideServerWarning() { const w = document.getElementById('serverWarning'); if (w) w.remove(); }
 
-function toggleTeamField() { document.getElementById('teamInputGroup').style.display = document.getElementById('createBotType').value === 'hunter' ? 'block' : 'none'; }
+function toggleTeamField() {
+    document.getElementById('teamInputGroup').style.display = document.getElementById('createBotType').value === 'hunter' ? 'block' : 'none';
+}
 
 function initCharts() {
     const ctx1 = document.getElementById('activityChart')?.getContext('2d');
@@ -243,7 +230,12 @@ function loadDashboard() {
     });
 }
 
-function loadBots() { fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => { currentBots = data.bots || []; renderBots(); }); }
+function loadBots() {
+    fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
+        currentBots = data.bots || [];
+        renderBots();
+    });
+}
 
 function renderBots() {
     const filterStatus = document.getElementById('filterStatus')?.value || 'all';
@@ -252,16 +244,16 @@ function renderBots() {
     let filtered = currentBots.filter(b => (filterStatus === 'all' || b.status === filterStatus) && (filterType === 'all' || b.bot_type === filterType) && (b.bot_name.toLowerCase().includes(searchTerm)));
     const container = document.getElementById('botsGrid');
     if (!container) return;
-    if (filtered.length === 0) { container.innerHTML = '<div class="activity-skeleton">🤖 لا توجد بوتات</div>'; return; }
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="activity-skeleton">🤖 لا توجد بوتات</div>';
+        return;
+    }
     container.innerHTML = filtered.map(b => `
         <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
             <div class="bot-header"><div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div><div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div></div>
             <div class="bot-details"><div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div><div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div><div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div><div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div></div>
             <div class="bot-actions" onclick="event.stopPropagation()">
-                ${b.status === 'online' 
-                    ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
-                    : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`
-                }
+                ${b.status === 'online' ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>` : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`}
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
@@ -464,5 +456,3 @@ window.refreshLogs = refreshLogs;
 window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
 window.navigateTo = navigateTo;
-
-console.log('✅ BotCraft v3.3 - credentials: include added');
