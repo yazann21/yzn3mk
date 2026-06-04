@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v3.7 – إصلاح نهائي للجلسات والانتقال
+// BOT CRAFT v3.8 – FINAL WORKING VERSION
 // ========================================
 
 let currentUser = null;
@@ -41,26 +41,39 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 });
 
-// ---------- CHECK AUTH (مع معالجة إعادة التوجيه) ----------
+// ---------- CHECK AUTH & REDIRECT ----------
 function checkAuth() {
     const urlParams = new URLSearchParams(window.location.search);
-    
-    // إذا كان هناك معامل login=success، فهذا يعني أننا عدنا من المصادقة
-    if (urlParams.has('login') && urlParams.get('login') === 'success') {
-        // مسح المعامل من الرابط دون إعادة تحميل الصفحة
+    // إذا كان هناك أي معامل يشير إلى العودة من المصادقة (مثل code أو state)
+    if (urlParams.has('code') || urlParams.has('session_state') || urlParams.has('login')) {
+        // نمسح الرابط من المعاملات
         window.history.replaceState({}, document.title, '/');
-        // طلب حالة المستخدم بعد نصف ثانية (للتأكد من أن الجلسة خُزنت)
+        // نطلب حالة المستخدم بعد نصف ثانية
         setTimeout(() => {
-            fetchUserAndShowApp();
+            fetch('/api/user', { credentials: 'include' })
+                .then(res => {
+                    if (res.status === 401) {
+                        showLogin();
+                        return null;
+                    }
+                    return res.json();
+                })
+                .then(user => {
+                    if (user && user.username) {
+                        currentUser = user;
+                        showApp();
+                        loadDashboard();
+                        loadBots();
+                    } else {
+                        showLogin();
+                    }
+                })
+                .catch(() => showLogin());
         }, 500);
         return;
     }
     
-    // التحقق العادي من الجلسة
-    fetchUserAndShowApp();
-}
-
-function fetchUserAndShowApp() {
+    // التحقق العادي
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
             if (res.status === 401) {
@@ -75,7 +88,7 @@ function fetchUserAndShowApp() {
                 showApp();
                 loadDashboard();
                 loadBots();
-            } else if (!user) {
+            } else {
                 showLogin();
             }
         })
@@ -93,10 +106,11 @@ function showLogin() {
 function showApp() {
     document.getElementById('loginOverlay').style.display = 'none';
     document.getElementById('appWrapper').style.display = 'flex';
-    document.getElementById('sidebarUsername').innerHTML = currentUser.username;
-    document.getElementById('settingsUsername').innerHTML = currentUser.username;
-    document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
-    document.getElementById('welcomeUsername').innerHTML = currentUser.username;
+    // التحقق من وجود العناصر قبل تعيين القيم
+    if (document.getElementById('sidebarUsername')) document.getElementById('sidebarUsername').innerHTML = currentUser.username;
+    if (document.getElementById('settingsUsername')) document.getElementById('settingsUsername').innerHTML = currentUser.username;
+    if (document.getElementById('settingsUuid')) document.getElementById('settingsUuid').innerHTML = currentUser.uuid;
+    if (document.getElementById('welcomeUsername')) document.getElementById('welcomeUsername').innerHTML = currentUser.username;
     const mcStatus = document.getElementById('mcAccountStatus');
     if (mcStatus) {
         mcStatus.innerHTML = currentUser.isRealMinecraft ? '✅ حساب ماينكرافت حقيقي' : '⚠️ حساب مايكروسوفت غير مرتبط بماينكرافت';
@@ -111,7 +125,7 @@ function logout() {
     });
 }
 
-// ---------- باقي الدوال (نفس النسخة السابقة مع credentials) ----------
+// ---------- باقي الدوال كما هي ولكن مع تجنب الأخطاء ----------
 function initEventListeners() {
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
     document.getElementById('loginMicrosoftBtn')?.addEventListener('click', () => {
@@ -121,7 +135,8 @@ function initEventListeners() {
     });
     document.getElementById('createBotType')?.addEventListener('change', toggleTeamField);
     document.getElementById('editBotType')?.addEventListener('change', (e) => {
-        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
+        const teamRow = document.getElementById('editTeamGroup');
+        if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
     });
     document.getElementById('createServerIp')?.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -458,6 +473,7 @@ function populateVersions(selectId) { const select = document.getElementById(sel
 populateVersions('createVersion');
 populateVersions('editVersion');
 
+// تعريف الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
