@@ -36,7 +36,24 @@ async function getMinecraftProfile(accessToken) {
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
         console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
-        return { username };
+
+        let minecraftToken = null;
+        let minecraftUsername = null;
+        try {
+            const flow = new Authflow(`user_${username}`, './ms-cache', {
+                authTitle: Titles.MinecraftJava,
+                deviceType: 'Win32',
+                flow: 'msal'
+            });
+            const tokenResult = await flow.getMinecraftJavaToken({ accessToken });
+            minecraftToken = tokenResult.token;
+            minecraftUsername = tokenResult.profile.name;
+            console.log(`✅ تم ربط حساب ماينكرافت: ${minecraftUsername}`);
+        } catch (err) {
+            console.log(`⚠️ لم يتم العثور على حساب ماينكرافت مرتبط: ${err.message}`);
+        }
+        
+        return { username, minecraftToken, minecraftUsername };
     } catch (error) {
         console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
         throw error;

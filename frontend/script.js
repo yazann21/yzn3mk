@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - مع زر تحقق يعمل بالكامل
+// BOT CRAFT v4.0 - بدون زر تحقق
 // ========================================
 
 let currentUser = null;
@@ -61,6 +61,17 @@ function initAuth() {
                 showApp();
                 loadDashboard();
                 loadBots();
+                // عرض حالة حساب ماينكرافت
+                const mcStatus = document.getElementById('mcAccountStatus');
+                if (mcStatus) {
+                    if (user.hasMinecraft) {
+                        mcStatus.innerHTML = `✅ حساب ماينكرافت: ${user.minecraftUsername || 'مرتبط'}`;
+                        mcStatus.style.color = '#22c55e';
+                    } else {
+                        mcStatus.innerHTML = '⚠️ لم يتم ربط حساب ماينكرافت. تأكد من أن حساب مايكروسوفت يملك Minecraft Java Edition.';
+                        mcStatus.style.color = '#f59e0b';
+                    }
+                }
             } else {
                 showLogin();
             }
@@ -306,29 +317,12 @@ function renderBots() {
             <div class="bot-actions" onclick="event.stopPropagation()">
                 ${b.status === 'online' ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button><button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>` : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`}
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
-                <button class="btn-verify" onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
                 <button class="btn-delete" onclick="deleteBot(${b.id})"><i class="fas fa-trash"></i> حذف</button>
             </div>
         </div>
     `).join('');
-}
-
-function verifyBotAccount(botId) {
-    fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.message) {
-                alert(data.message);
-                if (data.message.includes('انتظر')) {
-                    alert('📌 افتح سجل Render (Logs) وابحث عن 🔗 الرابط و 🔢 الرمز، ثم افتح الرابط في المتصفح وأدخل الرمز.');
-                }
-            } else if (data.error) {
-                alert('خطأ: ' + data.error);
-            }
-        })
-        .catch(() => alert('حدث خطأ أثناء محاولة التحقق'));
 }
 
 function startBot(id) {
@@ -338,9 +332,13 @@ function startBot(id) {
         credentials: 'include',
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
-        if (data.error === 'need_minecraft_auth') alert('⚠️ يجب التحقق من حساب البوت أولاً (اضغط زر تحقق)');
-        else { loadBots(); loadDashboard(); }
-    });
+        if (data.error === 'no_minecraft_token') {
+            alert('⚠️ لا يمكن تشغيل البوت: لم يتم ربط حساب ماينكرافت بحساب مايكروسوفت الخاص بك. تأكد من أن حسابك يملك Minecraft Java Edition.');
+        } else {
+            loadBots();
+            loadDashboard();
+        }
+    }).catch(err => console.error(err));
 }
 
 function stopBot(id) {
@@ -658,4 +656,3 @@ window.refreshLogs = refreshLogs;
 window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
 window.navigateTo = navigateTo;
-window.verifyBotAccount = verifyBotAccount;
