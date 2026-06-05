@@ -8,36 +8,16 @@ const botInventory = new Map();
 
 const VIEWER_BASE_PORT = 8080;
 
-function killProcessGracefully(proc, botId) {
-  return new Promise((resolve) => {
-    if (!proc) return resolve();
-    let killed = false;
-    const timeout = setTimeout(() => {
-      if (!killed) {
-        try { process.kill(proc.pid, 'SIGKILL'); } catch(e) {}
-        resolve();
-      }
-    }, 100); // 100 مللي ثانية كحد أقصى
-    proc.once('exit', () => {
-      killed = true;
-      clearTimeout(timeout);
-      resolve();
-    });
-    try { proc.kill('SIGTERM'); } catch(e) { resolve(); }
-  });
-}
-
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
-  // قتل أي عملية سابقة
+  // قتل أي عملية سابقة فوراً
   const existing = botProcesses.get(botId);
   if (existing) {
     console.log(`[Bot ${botId}] إنهاء العملية السابقة فوراً...`);
-    if (existing.connected) {
-      try { existing.send({ type: 'force_exit' }); } catch(e) {}
-    }
-    killProcessGracefully(existing, botId).then(() => {
-      botProcesses.delete(botId);
-    });
+    try {
+      if (existing.connected) existing.send({ type: 'force_exit' });
+    } catch(e) {}
+    try { process.kill(existing.pid, 'SIGKILL'); } catch(e) {}
+    botProcesses.delete(botId);
   }
 
   const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
@@ -97,17 +77,13 @@ function stopBot(botId) {
   const p = botProcesses.get(botId);
   if (p) {
     console.log(`[Bot ${botId}] طلب إيقاف فوري...`);
+    // إرسال إشارة للعملية الفرعية للخروج الفوري
     if (p.connected) {
       try { p.send({ type: 'force_exit' }); } catch(e) {}
     }
-    // إنهاء قسري بعد 50 مللي ثانية كحد أقصى
-    setTimeout(() => {
-      if (botProcesses.has(botId)) {
-        try { process.kill(p.pid, 'SIGKILL'); } catch(e) {}
-        botProcesses.delete(botId);
-      }
-    }, 50);
-    // لا ننتظر، نحذف من الخريطة فوراً
+    // قتل العملية فوراً بـ SIGKILL (بدون انتظار)
+    try { process.kill(p.pid, 'SIGKILL'); } catch(e) {}
+    // إزالة من الخريطة مباشرة
     botProcesses.delete(botId);
     return true;
   }

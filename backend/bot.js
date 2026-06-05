@@ -259,7 +259,8 @@ async function createBot() {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
           log(`😨 تعرض البوت للضرب! قطع الاتصال فوراً.`);
-          bot.end(); // فقط ننهي الاتصال، والمكتبة ستعيد المحاولة بسرعة
+          // خروج فوري بدون أي انتظار (كما هو مطلوب سرعة قصوى)
+          process.exit(0);
         }
       });
     }
@@ -285,16 +286,15 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    // لا حاجة لإعادة الاتصال اليدوي، mineflayer يقوم بذلك تلقائياً بسرعة
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-// استجابة فورية لأمر الإنهاء من الأب
+// ⚡ إيقاف فوري عند استلام أمر force_exit (بدون أي تأخير)
 process.on('message', (msg) => {
   if (msg && msg.type === 'force_exit') {
-    // خروج فوري بدون أي تنظيف
+    // خروج بدون أي تنظيف أو انتظار – فوري 100%
     process.exit(0);
   }
 });
