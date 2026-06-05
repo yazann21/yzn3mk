@@ -1,6 +1,6 @@
 /* ========================================
    BOT CRAFT - PROFESSIONAL MINECRAFT BOT CONTROLLER
-   التصميم النهائي
+   التصميم النهائي المرتب (بدون تراكب)
    ======================================== */
 
 * {
@@ -605,6 +605,39 @@ body {
 .input-group.floating input:focus ~ .input-border,
 .input-group.floating select:focus ~ .input-border { width: 100%; }
 
+/* تنسيق خيارات المصادقة (حقيقي / غير مسجل) - حل مشكلة التراكب */
+.auth-options {
+    display: flex;
+    gap: 30px;
+    padding: 15px 0;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.auth-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 10px 24px;
+    border-radius: 40px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.auth-option:hover {
+    background: rgba(124, 58, 237, 0.2);
+    transform: translateY(-2px);
+}
+.auth-option input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+.auth-option span {
+    font-size: 14px;
+    font-weight: 500;
+}
+
 .btn-submit-glow {
     width: 100%;
     background: linear-gradient(135deg, var(--primary), var(--primary-light));
@@ -622,9 +655,6 @@ body {
     transition: var(--transition-smooth);
 }
 .btn-submit-glow:hover { transform: translateY(-2px); box-shadow: var(--shadow-glow); }
-
-/* باقي التنسيقات (مثل modals, tabs, mobile...) موجودة في ملفك السابق، أضفها إذا لم تكن موجودة */
-/* ... (سأضيف التكميلية المهمة) ... */
 
 .settings-container {
     display: grid;
@@ -885,7 +915,6 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .login-features i { color: var(--success); margin-right: 6px; }
 .login-card small { color: var(--text-muted); font-size: 12px; }
 
-/* تنسيق التحكم */
 .control-tabs {
     display: flex;
     gap: 8px;
@@ -939,6 +968,8 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .form-row { grid-template-columns: 1fr; }
     .settings-container { grid-template-columns: 1fr; }
     .inventory-grid { grid-template-columns: repeat(6, 1fr); }
+    .auth-options { flex-direction: column; gap: 12px; width: 100%; }
+    .auth-option { justify-content: center; }
 }
 
 @media (max-width: 480px) {
