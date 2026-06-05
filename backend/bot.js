@@ -13,6 +13,7 @@ let currentTarget = null;
 let teamList = [];
 let killCount = 0;
 let deathCount = 0;
+let isDisconnecting = false;
 
 const args = process.argv.slice(2);
 const config = {
@@ -259,8 +260,14 @@ async function createBot() {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
           log(`😨 تعرض البوت للضرب! قطع الاتصال فوراً.`);
-          // خروج فوري بدون أي انتظار (كما هو مطلوب سرعة قصوى)
-          process.exit(0);
+          // قطع اتصال نظيف ثم خروج
+          if (bot && !isDisconnecting) {
+            isDisconnecting = true;
+            bot.end();
+            setTimeout(() => process.exit(0), 100);
+          } else {
+            process.exit(0);
+          }
         }
       });
     }
@@ -286,25 +293,51 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
+    if (isDisconnecting) {
+      process.exit(0);
+    }
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-// ⚡ إيقاف فوري عند استلام أمر force_exit (بدون أي تأخير)
+// معالجة أوامر قطع الاتصال النظيف من العملية الأب
 process.on('message', (msg) => {
-  if (msg && msg.type === 'force_exit') {
-    // خروج بدون أي تنظيف أو انتظار – فوري 100%
+  if (msg && msg.type === 'disconnect') {
+    log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
+    if (bot && !isDisconnecting) {
+      isDisconnecting = true;
+      bot.end();
+      setTimeout(() => {
+        if (!isDisconnecting) process.exit(0);
+      }, 1000);
+    } else {
+      process.exit(0);
+    }
+  } else if (msg && msg.type === 'force_exit') {
+    log(`📢 أمر إنهاء فوري (غير نظيف).`);
     process.exit(0);
   }
 });
 
 process.on('SIGINT', () => {
-  process.exit(0);
+  if (bot && !isDisconnecting) {
+    isDisconnecting = true;
+    bot.end();
+    setTimeout(() => process.exit(0), 500);
+  } else {
+    process.exit(0);
+  }
 });
 
 process.on('SIGTERM', () => {
-  process.exit(0);
+  if (bot && !isDisconnecting) {
+    isDisconnecting = true;
+    bot.end();
+    setTimeout(() => process.exit(0), 500);
+  } else {
+    process.exit(0);
+  }
 });
 
 createBot();

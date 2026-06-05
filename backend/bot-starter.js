@@ -9,14 +9,18 @@ const botInventory = new Map();
 const VIEWER_BASE_PORT = 8080;
 
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
-  // قتل أي عملية سابقة فوراً
+  // قتل أي عملية سابقة بلطف
   const existing = botProcesses.get(botId);
   if (existing) {
-    console.log(`[Bot ${botId}] إنهاء العملية السابقة فوراً...`);
+    console.log(`[Bot ${botId}] إنهاء العملية السابقة بلطف...`);
     try {
       if (existing.connected) existing.send({ type: 'force_exit' });
     } catch(e) {}
-    try { process.kill(existing.pid, 'SIGKILL'); } catch(e) {}
+    setTimeout(() => {
+      if (botProcesses.has(botId)) {
+        try { process.kill(existing.pid, 'SIGKILL'); } catch(e) {}
+      }
+    }, 1000);
     botProcesses.delete(botId);
   }
 
@@ -76,15 +80,19 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
 function stopBot(botId) {
   const p = botProcesses.get(botId);
   if (p) {
-    console.log(`[Bot ${botId}] طلب إيقاف فوري...`);
-    // إرسال إشارة للعملية الفرعية للخروج الفوري
+    console.log(`[Bot ${botId}] طلب إيقاف (قطع اتصال نظيف)...`);
+    // نرسل إشارة للبوت لقطع الاتصال ثم الخروج
     if (p.connected) {
-      try { p.send({ type: 'force_exit' }); } catch(e) {}
+      try { p.send({ type: 'disconnect' }); } catch(e) {}
     }
-    // قتل العملية فوراً بـ SIGKILL (بدون انتظار)
-    try { process.kill(p.pid, 'SIGKILL'); } catch(e) {}
-    // إزالة من الخريطة مباشرة
-    botProcesses.delete(botId);
+    // نعطي البوت مهلة 500ms لقطع الاتصال ثم نقتله إذا بقي
+    setTimeout(() => {
+      if (botProcesses.has(botId)) {
+        try { process.kill(p.pid, 'SIGKILL'); } catch(e) {}
+        botProcesses.delete(botId);
+      }
+    }, 500);
+    // لا نحذف فوراً من الخريطة حتى يتم الاستماع للخروج
     return true;
   }
   return false;
