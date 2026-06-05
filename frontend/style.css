@@ -1,6 +1,5 @@
 /* ========================================
-   BOT CRAFT - PROFESSIONAL MINECRAFT BOT CONTROLLER
-   التصميم النهائي (خيارات المصادقة عمودية)
+   BOT CRAFT - التصميم النهائي (مع خيارات المصادقة العمودية)
    ======================================== */
 
 * {
@@ -606,28 +605,40 @@ body {
 .input-group.floating select:focus ~ .input-border { width: 100%; }
 
 /* ========================================
-   خيارات المصادقة - شكل عمودي (تحت بعض)
+   خيارات المصادقة - عمودية وواضحة (الحل النهائي)
    ======================================== */
+.auth-section {
+    margin: 15px 0 25px 0;
+    padding: 10px 0;
+    border-top: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--glass-border);
+}
+.auth-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
 .auth-options {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 10px 0;
     width: 100%;
 }
 .auth-option {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(255, 255, 255, 0.05);
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.04);
     padding: 12px 16px;
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
-    width: 100%;
+    border: 1px solid transparent;
 }
 .auth-option:hover {
-    background: rgba(124, 58, 237, 0.15);
+    background: rgba(124, 58, 237, 0.1);
+    border-color: var(--primary-light);
     transform: translateX(4px);
 }
 .auth-option input {
