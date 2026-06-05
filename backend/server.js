@@ -95,7 +95,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مسار التحقق من البوت (الحل النهائي) ==========
+// ========== مسار التحقق من البوت (الحل النهائي باستخدام flow: 'sisu') ==========
 const pendingFlows = new Map();
 
 app.get('/api/bot-verify/:botId', async (req, res) => {
@@ -103,7 +103,6 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
     const botId = parseInt(req.params.botId);
     
     try {
-        // التحقق من وجود البوت
         const bot = await new Promise((resolve, reject) => {
             db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
                 if (err) reject(err);
@@ -112,54 +111,45 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // إنشاء تدفق المصادقة باستخدام المعرف المعتمد من مايكروسوفت
-        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
-            authTitle: Titles.MinecraftJava,   // المعرف الرسمي لتطبيق Minecraft
+        // ✅ استخدام نفس الإعدادات التي اشتغلت على الجهاز المحلي
+        const userIdentifier = `bot_${botId}_${Date.now()}`;
+        const flow = new Authflow(userIdentifier, './ms-cache', {
+            authTitle: Titles.MinecraftJava,
             deviceType: 'Win32',
-            flow: 'live',                      // تدفق مباشر بدون Azure AD
+            flow: 'sisu',   // 🔑 المفتاح الأساسي لحل المشكلة
             onMsaCode: (data) => {
                 console.log(`\n🔐 مصادقة البوت ${botId}:`);
                 console.log(`🔗 الرابط: ${data.verification_uri}`);
                 console.log(`🔢 الرمز: ${data.user_code}`);
                 console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
-                
-                // حفظ التدفق للاستخدام لاحقاً
                 pendingFlows.set(botId, flow);
-                
-                // إرسال الرابط والرمز إلى الواجهة الأمامية
                 if (!res.headersSent) {
                     res.json({
                         need_verification: true,
                         verification_uri: data.verification_uri,
                         user_code: data.user_code,
                         expires_in: data.expires_in,
-                        message: 'يجب إتمام المصادقة باستخدام الرابط والرمز'
+                        message: 'يرجى إتمام المصادقة خلال دقيقة'
                     });
                 }
             }
         });
         
-        // محاولة الحصول على توكن ماينكرافت
         const tokenResult = await flow.getMinecraftJavaToken();
         
         if (tokenResult && tokenResult.token) {
-            // حفظ التوكن في قاعدة البيانات
             db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
                 if (err) {
                     console.error('DB update error:', err);
-                    if (!res.headersSent) {
-                        res.status(500).json({ error: 'فشل حفظ التوكن في قاعدة البيانات' });
-                    }
+                    if (!res.headersSent) res.status(500).json({ error: 'فشل حفظ التوكن' });
                 } else {
                     console.log(`✅ Bot ${botId} verified successfully.`);
                     pendingFlows.delete(botId);
-                    if (!res.headersSent) {
-                        res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
-                    }
+                    if (!res.headersSent) res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
                 }
             });
         } else {
-            throw new Error('لم يتم استلام التوكن من مايكروسوفت');
+            throw new Error('لم يتم استلام التوكن');
         }
     } catch (error) {
         console.error(`❌ Bot ${botId} verification failed:`, error);
@@ -169,7 +159,7 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
     }
 });
 
-// مسار إتمام المصادقة (في حالة عدم اكتمالها تلقائياً)
+// مسار إتمام المصادقة (اختياري للتعامل مع حالات التأخير)
 app.post('/api/complete-auth', async (req, res) => {
     const { botId } = req.body;
     const flow = pendingFlows.get(parseInt(botId));
@@ -184,7 +174,7 @@ app.post('/api/complete-auth', async (req, res) => {
                     console.error('DB update error:', err);
                     return res.status(500).json({ error: 'فشل حفظ التوكن' });
                 }
-                console.log(`✅ Bot ${botId} verified successfully via /complete-auth.`);
+                console.log(`✅ Bot ${botId} verified via complete-auth.`);
                 pendingFlows.delete(parseInt(botId));
                 res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
             });
@@ -217,7 +207,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ========== باقي المسارات ==========
+// ========== باقي المسارات (نسخ احتياطي) ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
