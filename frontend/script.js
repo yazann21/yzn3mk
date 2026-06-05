@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع عرض المصادقة داخل السجلات
+// BOT CRAFT v6.0 - النسخة النهائية (المصادقة عبر سجلات البوت)
 // ========================================
 
 let currentUser = null;
@@ -42,14 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuth();
     loadDashboard();
     loadBots();
-
-    // مستمعات أزرار المصادقة
-    document.getElementById('copyUriBtn')?.addEventListener('click', () => copyToClipboard(document.getElementById('authUriLink')?.textContent));
-    document.getElementById('copyCodeBtn')?.addEventListener('click', () => copyToClipboard(document.getElementById('authUserCode')?.textContent));
-    document.getElementById('openUriBtn')?.addEventListener('click', () => {
-        const uri = document.getElementById('authUriLink')?.href;
-        if (uri) window.open(uri, '_blank');
-    });
 });
 
 function initAuth() {
@@ -245,7 +237,7 @@ function renderBots() {
                     <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
                     <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
                     ${b.auth_type === 'microsoft' 
-                        ? (isVerified ? `<div><i class="fas fa-check-circle" style="color:#22c55e"></i> ✓ مرتبط بحساب ${escapeHtml(b.mc_username)}</div>` : `<div><i class="fas fa-spinner fa-pulse"></i> في انتظار المصادقة</div>`)
+                        ? (isVerified ? `<div><i class="fas fa-check-circle" style="color:#22c55e"></i> ✓ مرتبط بحساب ${escapeHtml(b.mc_username)}</div>` : `<div><i class="fas fa-spinner fa-pulse"></i> في انتظار المصادقة (شغّل البوت)</div>`)
                         : `<div><i class="fas fa-user-secret"></i> وضع غير مسجل</div>`
                     }
                 </div>
@@ -289,51 +281,15 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
         const data = await response.json();
         if (data.error) {
             alert('❌ خطأ: ' + data.error);
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
             return;
         }
-        if (data.need_verification) {
-            alert('🔐 جاري بدء مصادقة مايكروسوفت... ستظهر معلومات المصادقة في سجلات البوت.');
-            const verifyResponse = await fetch(`/api/start-verification/${data.botId}`, { credentials: 'include' });
-            const verifyData = await verifyResponse.json();
-            if (verifyData.need_verification) {
-                // سيتم عرض الرابط والرمز في سجلات البوت (عند فتح السجلات)
-                // نوجه المستخدم لفتح السجلات
-                alert(`🔐 مصادقة حساب مايكروسوفت مطلوبة.\nالرمز: ${verifyData.user_code}\nالرابط: ${verifyData.verification_uri}\n\nافتح الرابط في نافذة خاصة وأدخل الرمز.\nسيظهر رابط ورمز في سجلات البوت أيضاً.`);
-                // مراقبة حالة البوت
-                const interval = setInterval(async () => {
-                    const botsRes = await fetch('/api/bots', { credentials: 'include' });
-                    const botsData = await botsRes.json();
-                    const updatedBot = botsData.bots.find(b => b.id == data.botId);
-                    if (updatedBot && updatedBot.status === 'online') {
-                        clearInterval(interval);
-                        alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
-                        navigateTo('bots');
-                        loadBots();
-                    } else if (updatedBot && updatedBot.mc_token) {
-                        clearInterval(interval);
-                        alert(`✅ تم التحقق من الحساب! يمكنك الآن تشغيل البوت يدوياً.`);
-                        navigateTo('bots');
-                        loadBots();
-                    }
-                }, 3000);
-            } else if (verifyData.success && verifyData.auto_started) {
-                alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
-                navigateTo('bots');
-                loadBots();
-            } else {
-                alert('❌ فشل بدء المصادقة: ' + (verifyData.error || 'خطأ غير معروف'));
-            }
-        } else if (data.auto_started) {
-            alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
-            navigateTo('bots');
-            loadBots();
+        if (authType === 'microsoft') {
+            alert(`✅ تم إنشاء البوت (حساب حقيقي).\nعند الضغط على "تشغيل" سيقوم البوت بطلب مصادقة مايكروسوفت.\nافتح سجلات البوت (زر "سجلات") لرؤية الرابط والرمز.`);
         } else {
-            alert(`✅ تم إنشاء البوت بنجاح! يمكنك تشغيله من لوحة البوتات.`);
-            navigateTo('bots');
-            loadBots();
+            alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
         }
+        navigateTo('bots');
+        loadBots();
     } catch (err) {
         console.error('Error creating bot:', err);
         alert('❌ حدث خطأ أثناء إنشاء البوت: ' + err.message);
@@ -422,16 +378,10 @@ function openLogs(id) {
         fetch(`/api/bot-logs/${id}`, { credentials: 'include' })
             .then(res => res.json())
             .then(data => { 
-                const logsText = (data.logs || []).join('\n');
-                document.getElementById('logsText').innerHTML = logsText;
-                // استخراج الرابط والرمز من النص
-                const uriMatch = logsText.match(/🔗 الرابط: (https:\/\/[^\s]+)/);
-                const codeMatch = logsText.match(/🔢 الرمز: ([A-Z0-9]+)/);
-                if (uriMatch && codeMatch) {
-                    showAuthInfo(uriMatch[1], codeMatch[1]);
-                } else {
-                    hideAuthInfo();
-                }
+                document.getElementById('logsText').innerHTML = (data.logs || []).join('\n');
+                // إخفاء صندوق المصادقة القديم إن وُجد
+                const authBox = document.getElementById('authInfoBox');
+                if (authBox) authBox.style.display = 'none';
             })
             .catch(err => console.error('Failed to fetch logs:', err));
     };
@@ -601,27 +551,6 @@ function populateVersions(selectId) {
 }
 populateVersions('createVersion');
 populateVersions('editVersion');
-
-// ========== دوال عرض معلومات المصادقة داخل السجلات ==========
-function showAuthInfo(uri, code) {
-    const authBox = document.getElementById('authInfoBox');
-    const authUriLink = document.getElementById('authUriLink');
-    const authUserCode = document.getElementById('authUserCode');
-    if (authBox && authUriLink && authUserCode) {
-        authUriLink.href = uri;
-        authUriLink.textContent = uri;
-        authUserCode.textContent = code;
-        authBox.style.display = 'block';
-    }
-}
-function hideAuthInfo() {
-    const authBox = document.getElementById('authInfoBox');
-    if (authBox) authBox.style.display = 'none';
-}
-function copyToClipboard(text) {
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => alert('تم نسخ النص!')).catch(() => alert('فشل النسخ'));
-}
 
 // ربط الدوال العامة
 window.closeEditModal = closeEditModal;

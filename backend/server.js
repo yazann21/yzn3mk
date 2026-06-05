@@ -7,7 +7,6 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
-const { Authflow, Titles } = require('prismarine-auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -85,7 +84,6 @@ app.get('/api/bots', (req, res) => {
     });
 });
 
-// إنشاء بوت جديد مع اختيار نوع الحساب
 app.post('/api/create-bot-cloud', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botName, botType, serverIp, teamNames, version, authType } = req.body;
@@ -93,85 +91,28 @@ app.post('/api/create-bot-cloud', (req, res) => {
         [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10', authType || 'offline'], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             const newBotId = this.lastID;
-            if (authType === 'microsoft') {
-                // نبدأ عملية المصادقة فوراً
-                res.json({ success: true, botId: newBotId, need_verification: true });
-            } else {
-                // وضع غير مسجل: نشغل البوت مباشرة
-                startBot(newBotId, botName, null, botName, null, serverIp, botType, teamNames || '', version || '1.21.10');
-                db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', newBotId]);
-                res.json({ success: true, botId: newBotId, auto_started: true });
-            }
+            res.json({ success: true, botId: newBotId, need_verification: (authType === 'microsoft') });
         });
 });
 
-// ========== مسار بدء المصادقة (للبوتات الحقيقية) ==========
-const pendingFlows = new Map();
-
-app.get('/api/start-verification/:botId', async (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const botId = parseInt(req.params.botId);
-    
-    try {
-        const bot = await new Promise((resolve, reject) => {
-            db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
-            });
-        });
-        if (!bot) return res.status(404).json({ error: 'Bot not found' });
-        if (bot.auth_type !== 'microsoft') {
-            return res.status(400).json({ error: 'هذا البوت ليس من النوع الحقيقي' });
-        }
-
-        const userIdentifier = `bot_${botId}_${Date.now()}`;
-        const flow = new Authflow(userIdentifier, './ms-cache', {
-            authTitle: Titles.MinecraftJava,
-            deviceType: 'Win32',
-            flow: 'sisu',
-            onMsaCode: (data) => {
-                console.log(`\n🔐 مصادقة البوت ${botId}:`);
-                console.log(`🔗 الرابط: ${data.verification_uri}`);
-                console.log(`🔢 الرمز: ${data.user_code}`);
-                pendingFlows.set(botId, flow);
-                if (!res.headersSent) {
-                    res.json({
-                        need_verification: true,
-                        verification_uri: data.verification_uri,
-                        user_code: data.user_code,
-                        expires_in: data.expires_in
-                    });
-                }
-            }
-        });
-        
-        const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
-        
-        if (tokenResult && tokenResult.token && tokenResult.profile) {
-            db.run(`UPDATE bots SET mc_token = ?, mc_username = ?, mc_profile_id = ? WHERE id = ?`,
-                [tokenResult.token, tokenResult.profile.name, tokenResult.profile.id, botId], (err) => {
-                if (err) console.error('DB error:', err);
-                else {
-                    console.log(`✅ Bot ${botId} verified with username ${tokenResult.profile.name}`);
-                    // بعد التحقق، نشغل البوت فوراً
-                    startBot(botId, bot.bot_name, tokenResult.token, tokenResult.profile.name, tokenResult.profile.id, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
-                    db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
-                }
-                pendingFlows.delete(botId);
-                if (!res.headersSent) res.json({ success: true, username: tokenResult.profile.name, auto_started: true });
-            });
-        } else {
-            throw new Error('لم يتم استلام التوكن');
-        }
-    } catch (error) {
-        console.error(`❌ Bot ${botId} verification failed:`, error);
-        if (!res.headersSent) {
-            res.status(500).json({ error: 'فشل التحقق: ' + error.message });
-        }
+// ========== حفظ التوكن الذي يرسله البوت بعد المصادقة الذاتية ==========
+app.post('/api/save-bot-token', (req, res) => {
+    const { botId, mcToken, mcUsername, mcProfileId } = req.body;
+    if (!botId || !mcToken || !mcUsername || !mcProfileId) {
+        return res.status(400).json({ error: 'بيانات ناقصة' });
     }
+    db.run(`UPDATE bots SET mc_token = ?, mc_username = ?, mc_profile_id = ? WHERE id = ?`,
+        [mcToken, mcUsername, mcProfileId, botId], function(err) {
+            if (err) {
+                console.error('DB error:', err);
+                return res.status(500).json({ error: err.message });
+            }
+            console.log(`✅ تم حفظ توكن البوت ${botId} (${mcUsername})`);
+            res.json({ success: true });
+        });
 });
 
-// ========== تشغيل البوت (إذا كان قد تم التحقق مسبقاً) ==========
+// ========== تشغيل البوت (يمرر AUTH_TYPE و API_URL) ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -179,21 +120,20 @@ app.post('/api/start-cloud-bot', (req, res) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         if (botProcesses.has(botId)) return res.json({ success: true, alreadyRunning: true });
         
-        if (bot.auth_type === 'microsoft' && bot.mc_token && bot.mc_token !== '') {
-            startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
-            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
-            res.json({ success: true, mode: 'microsoft' });
-        } else if (bot.auth_type === 'offline') {
-            startBot(botId, bot.bot_name, null, bot.bot_name, null, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
-            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
-            res.json({ success: true, mode: 'offline' });
-        } else {
-            res.status(400).json({ error: 'البوت يحتاج إلى مصادقة مايكروسوفت أولاً' });
-        }
+        let mcToken = bot.mc_token;
+        let mcUsername = bot.mc_username;
+        let mcProfileId = bot.mc_profile_id;
+        let authType = bot.auth_type || 'offline';
+        
+        // إذا كان البوت من نوع "حقيقي" وليس لديه توكن، سنمرر AUTH_TYPE='microsoft' فقط
+        // البوت نفسه سيتولى المصادقة عند الحاجة
+        startBot(botId, bot.bot_name, mcToken, mcUsername, mcProfileId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, authType);
+        db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+        res.json({ success: true, mode: authType });
     });
 });
 
-// ========== باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, camera) ==========
+// ========== بقية مسارات التحكم (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, camera) ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -249,11 +189,7 @@ app.post('/api/restart-bot', (req, res) => {
     setTimeout(() => {
         db.get('SELECT * FROM bots WHERE id = ?', [botId], (err, bot) => {
             if (bot) {
-                if (bot.auth_type === 'microsoft' && bot.mc_token && bot.mc_token !== '') {
-                    startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
-                } else {
-                    startBot(botId, bot.bot_name, null, bot.bot_name, null, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
-                }
+                startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version, bot.auth_type);
                 db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
             }
         });
@@ -267,20 +203,9 @@ app.post('/api/clear-logs/:botId', (req, res) => {
     res.json({ success: true });
 });
 
-// كاميرا المراقبة (تعرض إطار iframe للمنفذ المحلي، ngrok سيجعلها عامة)
 app.get('/camera/:botId', (req, res) => {
     const port = 8080 + parseInt(req.params.botId);
-    // نحاول الحصول على رابط ngrok من سجلات البوت (يمكن تخزينه في قاعدة البيانات)
-    // لكن هنا نعرض الإطار المحلي – ngrok سيجعله متاحاً من الخارج إذا تم تشغيله
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head><title>Bot Camera</title><style>body{margin:0;background:#0a0a1a;}</style></head>
-        <body>
-            <iframe src="http://localhost:${port}" style="width:100%;height:100vh;border:none;"></iframe>
-        </body>
-        </html>
-    `);
+    res.send(`<!DOCTYPE html><html><head><title>Bot Camera</title><style>body{margin:0;background:#0a0a1a;}</style></head><body><iframe src="http://localhost:${port}" style="width:100%;height:100vh;border:none;"></iframe></body></html>`);
 });
 
 const server = app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
