@@ -1,7 +1,7 @@
 // ========================================
 // BOT CRAFT v4.0 - النسخة النهائية (بدون تحقق)
 // ========================================
-
+// force update
 let currentUser = null;
 let currentBots = [];
 let logsInterval = null;
