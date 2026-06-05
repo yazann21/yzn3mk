@@ -8,9 +8,33 @@ const botInventory = new Map();
 
 const VIEWER_BASE_PORT = 8080;
 
+/**
+ * تشغيل بوت جديد
+ * @param {number} botId - معرف البوت
+ * @param {string} botName - اسم البوت (العرضي)
+ * @param {string|null} mcToken - توكن مايكروسوفت (إن وجد)
+ * @param {string} mcUsername - اسم المستخدم الحقيقي (إن وجد)
+ * @param {string|null} mcProfileId - معرف الملف الشخصي (إن وجد)
+ * @param {string} serverIp - عنوان السيرفر
+ * @param {string} botType - نوع البوت (afk, hunter, coward)
+ * @param {string} teamNames - أسماء الفريق (اختياري)
+ * @param {string} version - إصدار ماينكرافت
+ * @param {string} authType - 'microsoft' أو 'offline'
+ */
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
+    // 🔥 قتل أي عملية سابقة لنفس البوت (لتجنب تعارض المنافذ)
+    const existingProcess = botProcesses.get(botId);
+    if (existingProcess) {
+        console.log(`[Bot ${botId}] عملية سابقة موجودة، يتم إنهاؤها...`);
+        existingProcess.kill('SIGTERM');
+        botProcesses.delete(botId);
+        // انتظار قليل لتحرير المنفذ
+        setTimeout(() => {}, 500);
+    }
+
     const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
-    // إعداد متغيرات البيئة لتمريرها للبوت الفرعي
+    
+    // إعداد متغيرات البيئة
     const envVars = {
         ...process.env,
         BOT_ID: botId,
@@ -22,7 +46,7 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
         TEAM_NAMES: teamNames,
         MC_VERSION: version,
         VIEWER_PORT: viewerPort,
-        AUTH_TYPE: authType,          // 'microsoft' أو 'offline'
+        AUTH_TYPE: authType,
         API_URL: process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`
     };
 
@@ -52,6 +76,11 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
         if (msg.type === 'inventory') botInventory.set(botId, msg.inventory);
     });
 
+    botProcess.on('exit', (code, signal) => {
+        console.log(`[Bot ${botId}] خرجت العملية برمز ${code} وإشارة ${signal}`);
+        botProcesses.delete(botId);
+    });
+
     botProcesses.set(botId, botProcess);
     console.log(`✅ Bot ${botId} (${mcUsername || botName}) started with camera on port ${viewerPort}`);
     return { process: botProcess, logs };
@@ -59,14 +88,61 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
 
 function stopBot(botId) {
     const p = botProcesses.get(botId);
-    if (p) { p.kill(); botProcesses.delete(botId); return true; }
+    if (p) {
+        p.kill('SIGTERM');
+        botProcesses.delete(botId);
+        return true;
+    }
     return false;
 }
 
-function getBotLogs(botId) { return botLogs.get(botId) || []; }
-function getBotStats(botId) { return botStats.get(botId) || { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', level: 0, kills: 0, deaths: 0 }; }
-function getBotInventory(botId) { return botInventory.get(botId) || { inventory: [], helmet: 'فارغ', chest: 'فارغ', legs: 'فارغ', boots: 'فارغ', weapon: 'فارغ' }; }
-function deleteBot(botId) { stopBot(botId); return true; }
-function sendCommand(botId, command, extra = null) { const p = botProcesses.get(botId); if (p) p.send({ type: 'command', command, extra }); }
+function getBotLogs(botId) {
+    return botLogs.get(botId) || [];
+}
 
-module.exports = { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses };
+function getBotStats(botId) {
+    return botStats.get(botId) || {
+        health: 20,
+        food: 20,
+        position: '0,0,0',
+        armor: 'لا يوجد',
+        weapon: 'لا يوجد',
+        level: 0,
+        kills: 0,
+        deaths: 0
+    };
+}
+
+function getBotInventory(botId) {
+    return botInventory.get(botId) || {
+        inventory: [],
+        helmet: 'فارغ',
+        chest: 'فارغ',
+        legs: 'فارغ',
+        boots: 'فارغ',
+        weapon: 'فارغ'
+    };
+}
+
+function deleteBot(botId) {
+    stopBot(botId);
+    return true;
+}
+
+function sendCommand(botId, command, extra = null) {
+    const p = botProcesses.get(botId);
+    if (p) {
+        p.send({ type: 'command', command, extra });
+    }
+}
+
+module.exports = {
+    startBot,
+    stopBot,
+    getBotLogs,
+    getBotStats,
+    getBotInventory,
+    sendCommand,
+    deleteBot,
+    botProcesses
+};
