@@ -659,4 +659,4 @@ window.openLogs = openLogs;
 window.refreshLogs = refreshLogs;
 window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
-window.navigateTo = navigateTo;
+window.navigateTo = navigateTo;  س
