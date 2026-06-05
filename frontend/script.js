@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - النسخة النهائية (بدون تحقق)
+// BOT CRAFT v4.0 - النسخة النهائية (مع مصادقة البوت عند التشغيل)
 // ========================================
 
 let currentUser = null;
@@ -61,17 +61,6 @@ function initAuth() {
                 showApp();
                 loadDashboard();
                 loadBots();
-                // عرض حالة حساب ماينكرافت
-                const mcStatus = document.getElementById('mcAccountStatus');
-                if (mcStatus) {
-                    if (user.hasMinecraft) {
-                        mcStatus.innerHTML = `✅ حساب ماينكرافت: ${user.minecraftUsername || 'مرتبط'}`;
-                        mcStatus.style.color = '#22c55e';
-                    } else {
-                        mcStatus.innerHTML = '⚠️ لم يتم العثور على حساب ماينكرافت. تأكد من أن حساب مايكروسوفت يملك Minecraft Java Edition.';
-                        mcStatus.style.color = '#f59e0b';
-                    }
-                }
             } else {
                 showLogin();
             }
@@ -329,6 +318,7 @@ function renderBots() {
     `).join('');
 }
 
+// ========== دالة تشغيل البوت (تعرض رابط ورمز مايكروسوفت عند الحاجة) ==========
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
         method: 'POST',
@@ -336,13 +326,38 @@ function startBot(id) {
         credentials: 'include',
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
-        if (data.error === 'need_minecraft_auth') {
-            alert('⚠️ لم يتم العثور على حساب ماينكرافت مرتبط بحساب مايكروسوفت الخاص بك. تأكد من أن حسابك يملك Minecraft Java Edition.');
-        } else {
+        if (data.need_auth && data.verification_uri && data.user_code) {
+            // عرض الرابط والرمز للمستخدم
+            alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.\n\nبعد إتمام المصادقة، اضغط OK وسيتم تشغيل البوت.`);
+            
+            // استدعاء مسار إكمال المصادقة
+            fetch('/api/complete-auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ botId: parseInt(id) })
+            }).then(res => res.json()).then(completeData => {
+                if (completeData.success) {
+                    alert('✅ تم التحقق من البوت وتشغيله بنجاح!');
+                    loadBots();
+                    loadDashboard();
+                } else {
+                    alert('❌ فشل تشغيل البوت: ' + (completeData.error || 'خطأ غير معروف'));
+                }
+            }).catch(err => {
+                console.error('Completion error:', err);
+                alert('حدث خطأ أثناء إتمام المصادقة');
+            });
+        } else if (data.success) {
             loadBots();
             loadDashboard();
+        } else if (data.error) {
+            alert('خطأ: ' + data.error);
         }
-    }).catch(err => console.error(err));
+    }).catch(err => {
+        console.error('Start bot error:', err);
+        alert('حدث خطأ أثناء تشغيل البوت');
+    });
 }
 
 function stopBot(id) {

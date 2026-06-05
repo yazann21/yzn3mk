@@ -1,14 +1,13 @@
-const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { PublicClientApplication } = require('@azure/msal-node');
 const axios = require('axios');
 
 const msalConfig = {
     auth: {
         clientId: process.env.CLIENT_ID,
         authority: 'https://login.microsoftonline.com/consumers',
-        clientSecret: process.env.CLIENT_SECRET,
     }
 };
-const msalClient = new ConfidentialClientApplication(msalConfig);
+const msalClient = new PublicClientApplication(msalConfig);
 
 async function getAuthUrl() {
     const authUrlParams = {

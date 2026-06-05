@@ -94,13 +94,14 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مصادقة البوت (باستخدام تطبيق Azure الخاص مع client_secret) ==========
+// ========== مصادقة البوت (عند الضغط على تشغيل) ==========
 const { Authflow, Titles } = require('prismarine-auth');
 const pendingFlows = new Map();
 
-app.get('/api/bot-verify/:botId', async (req, res) => {
+app.post('/api/start-cloud-bot', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const botId = parseInt(req.params.botId);
+    const { botId } = req.body;
+    
     try {
         const bot = await new Promise((resolve, reject) => {
             db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
@@ -109,10 +110,18 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             });
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
-
-        // استخدام معرف العميل الخاص بك (من .env) مع تدفق msal
+        
+        // إذا كان البوت لديه توكن مخزن، استخدمه مباشرة
+        if (bot.mc_token && bot.mc_token !== 'null' && bot.mc_token !== '') {
+            if (botProcesses.has(botId)) return res.json({ success: true });
+            startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+            return res.json({ success: true });
+        }
+        
+        // بدء عملية مصادقة جهاز ماينكرافت
         const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
-            authTitle: process.env.CLIENT_ID,
+            authTitle: Titles.MinecraftJava,
             deviceType: 'Win32',
             flow: 'msal',
             onMsaCode: (data) => {
@@ -123,7 +132,8 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             }
         });
         pendingFlows.set(botId, flow);
-
+        
+        // انتظار الحصول على الرابط والرمز
         const deviceData = await new Promise((resolve) => {
             const originalOnMsaCode = flow['_onMsaCode'];
             flow['_onMsaCode'] = (data) => {
@@ -132,47 +142,64 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             };
             flow.getMinecraftJavaToken().catch(err => console.error('Token error:', err));
         });
-
-        res.json({
+        
+        // إرجاع الرابط والرمز للمستخدم
+        return res.json({
+            need_auth: true,
             verification_uri: deviceData.verification_uri,
             user_code: deviceData.user_code,
+            botId: botId,
             message: 'افتح الرابط وأدخل الرمز باستخدام حساب ماينكرافت الحقيقي'
         });
-
-        flow.getMinecraftJavaToken()
-            .then(tokenResult => {
-                if (tokenResult && tokenResult.token) {
-                    db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
-                        if (err) console.error('DB update error:', err);
-                        else console.log(`✅ Bot ${botId} verified successfully.`);
-                        pendingFlows.delete(botId);
-                    });
-                }
-            })
-            .catch(err => console.error(`❌ Bot ${botId} verification failed:`, err));
+        
     } catch (error) {
-        console.error('Error in /api/bot-verify:', error);
-        res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
+        console.error('Error in /api/start-cloud-bot:', error);
+        res.status(500).json({ error: 'حدث خطأ أثناء محاولة تشغيل البوت: ' + error.message });
     }
 });
 
-// تشغيل البوت
-app.post('/api/start-cloud-bot', (req, res) => {
-    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+// مسار لإكمال المصادقة بعد إدخال المستخدم للرمز (يستدعى من الواجهة)
+app.post('/api/complete-auth', async (req, res) => {
     const { botId } = req.body;
-    db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
-        if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
-        if (!bot.mc_token) {
-            return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً' });
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    
+    const flow = pendingFlows.get(botId);
+    if (!flow) {
+        return res.status(400).json({ error: 'لا توجد عملية مصادقة نشطة لهذا البوت' });
+    }
+    
+    try {
+        const tokenResult = await flow.getMinecraftJavaToken();
+        if (tokenResult && tokenResult.token) {
+            await new Promise((resolve, reject) => {
+                db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            pendingFlows.delete(botId);
+            
+            // تشغيل البوت بعد المصادقة الناجحة
+            const bot = await new Promise((resolve, reject) => {
+                db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
+            });
+            startBot(botId, bot.bot_name, tokenResult.token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+            
+            res.json({ success: true, message: 'تم التحقق من البوت وتشغيله بنجاح!' });
+        } else {
+            throw new Error('لم يتم الحصول على توكن');
         }
-        if (botProcesses.has(botId)) return res.json({ success: true });
-        startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
-        db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
-        res.json({ success: true });
-    });
+    } catch (err) {
+        console.error('Completion error:', err);
+        res.status(500).json({ error: 'فشل إكمال المصادقة: ' + err.message });
+    }
 });
 
-// باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, tasks, camera) كما هي
+// ========== باقي المسارات ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
