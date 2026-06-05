@@ -7,6 +7,7 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
+const { Authflow, Titles } = require('prismarine-auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,7 +35,7 @@ app.use(session({
 
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
@@ -53,15 +54,32 @@ app.get('/auth/callback', async (req, res) => {
     if (!code) return res.status(400).send('No code provided');
     try {
         const { accessToken } = await getTokenFromCode(code);
-        const { username, minecraftToken } = await getMinecraftProfile(accessToken);
-        db.run(`INSERT OR IGNORE INTO users (username) VALUES (?)`, [username]);
-        db.get(`SELECT id FROM users WHERE username = ?`, [username], (err, row) => {
-            if (err) return res.status(500).send('Database error');
-            req.session.userId = row.id;
-            req.session.username = username;
-            req.session.minecraftToken = minecraftToken;  // تخزين التوكن
-            req.session.save(() => res.redirect('/'));
-        });
+        const { username } = await getMinecraftProfile(accessToken);
+        
+        // محاولة الحصول على توكن ماينكرافت من نفس الحساب
+        let minecraftToken = null;
+        try {
+            const flow = new Authflow(`user_${username}_${Date.now()}`, './ms-cache', {
+                authTitle: Titles.MinecraftJava,
+                deviceType: 'Win32',
+                flow: 'msal'
+            });
+            const result = await flow.getMinecraftJavaToken({ accessToken });
+            if (result && result.token) {
+                minecraftToken = result.token;
+                console.log(`✅ تم استرداد توكن ماينكرافت للمستخدم ${username}`);
+            } else {
+                console.log(`⚠️ لم يتم العثور على توكن ماينكرافت للمستخدم ${username}`);
+            }
+        } catch (err) {
+            console.log(`⚠️ فشل استرداد توكن ماينكرافت: ${err.message}`);
+        }
+
+        db.run(`INSERT OR REPLACE INTO users (username, mc_token) VALUES (?, ?)`, [username, minecraftToken]);
+        req.session.userId = username;
+        req.session.username = username;
+        req.session.minecraftToken = minecraftToken;
+        req.session.save(() => res.redirect('/'));
     } catch (error) {
         console.error(error);
         res.status(500).send('Auth failed: ' + error.message);
@@ -70,10 +88,7 @@ app.get('/auth/callback', async (req, res) => {
 
 app.get('/api/user', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    res.json({ 
-        username: req.session.username,
-        hasMinecraft: !!req.session.minecraftToken
-    });
+    res.json({ username: req.session.username, hasMinecraft: !!req.session.minecraftToken });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -98,7 +113,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== تشغيل البوت باستخدام التوكن المخزن ==========
+// ========== تشغيل البوت مباشرة ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     if (!req.session.minecraftToken) {
