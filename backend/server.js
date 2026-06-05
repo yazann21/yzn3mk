@@ -6,7 +6,7 @@ const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
-const { getAuthUrl, getTokenFromCode, getMinecraftProfile, startBotDeviceAuth } = require('./auth');
+const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,7 +38,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== مصادقة المستخدم (تسجيل الدخول إلى الموقع) ==========
+// ========== مصادقة المستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -111,6 +111,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
 });
 
 // ========== مصادقة البوت (تعمل في الخلفية وتطبع الرابط في السجلات) ==========
+const { Authflow, Titles } = require('prismarine-auth');
 const pendingFlows = new Map();
 
 app.get('/api/bot-verify/:botId', async (req, res) => {
@@ -125,23 +126,24 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // بدء عملية مصادقة الجهاز (ستظهر البيانات في الدالة startBotDeviceAuth)
-        const { verification_uri, user_code, flow } = await startBotDeviceAuth(botId);
-        pendingFlows.set(botId, flow);
-        
-        // طباعة الرابط والرمز في سجل Render (بالإضافة إلى إعادته للمستخدم)
-        console.log(`\n🔐 مصادقة البوت ${botId}:`);
-        console.log(`🔗 الرابط: ${verification_uri}`);
-        console.log(`🔢 الرمز: ${user_code}`);
-        
-        // إرسال الرابط والرمز للمستخدم في رسالة منبثقة
-        res.json({ 
-            verification_uri: verification_uri,
-            user_code: user_code,
-            message: 'تم إنشاء رابط المصادقة. سجل الدخول بحساب ماينكرافت الحقيقي.'
+        // بدء عملية مصادقة الجهاز
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            authTitle: Titles.MinecraftJava,
+            deviceType: 'Win32',
+            flow: 'msal',
+            onMsaCode: (data) => {
+                console.log(`\n🔐 مصادقة البوت ${botId}:`);
+                console.log(`🔗 الرابط: ${data.verification_uri}`);
+                console.log(`🔢 الرمز: ${data.user_code}`);
+                console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
+            }
         });
-        
-        // متابعة العملية في الخلفية للحصول على التوكن
+        pendingFlows.set(botId, flow);
+
+        // إرجاع رسالة للمستخدم
+        res.json({ message: '🔗 تم بدء المصادقة. افتح سجل Render (Logs) وانسخ الرابط والرمز، ثم سجل دخولك بحساب ماينكرافت الحقيقي.' });
+
+        // متابعة عملية الحصول على التوكن في الخلفية
         flow.getMinecraftJavaToken()
             .then(tokenResult => {
                 if (tokenResult && tokenResult.token) {
@@ -153,7 +155,6 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
                 }
             })
             .catch(err => console.error(`❌ Bot ${botId} verification failed:`, err));
-            
     } catch (error) {
         console.error('Error in /api/bot-verify:', error);
         res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
