@@ -15,7 +15,7 @@ let currentTarget = null;
 let teamList = [];
 let killCount = 0;
 let deathCount = 0;
-let isClosing = false; // منع تكرار إغلاق الكاميرا
+let isClosing = false;
 
 const args = process.argv.slice(2);
 const config = {
@@ -156,7 +156,6 @@ function attackNearest() {
   }
 }
 
-// إغلاق خادم الكاميرا بشكل آمن
 async function closeViewer() {
   if (isClosing) return;
   isClosing = true;
@@ -168,7 +167,6 @@ async function closeViewer() {
         isClosing = false;
         resolve();
       });
-      // إغلاق قسري بعد 2 ثانية إذا لم يستجب
       setTimeout(() => {
         if (viewerServer) {
           try { viewerServer.closeAllConnections?.(); viewerServer.emit('close'); } catch(e) {}
@@ -186,12 +184,9 @@ async function closeViewer() {
 async function startViewer() {
   if (viewerStarted) return;
   try {
-    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
-    
-    // إغلاق أي خادم سابق
     await closeViewer();
-    // انتظار إضافي لتحرير النظام للمنفذ
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // استخدام منفذ ديناميكي (0) – يختار النظام منفذاً حراً تلقائياً
+    const desiredPort = 0;
     
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
     const http = require('http');
@@ -202,20 +197,23 @@ async function startViewer() {
     
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        log(`⚠️ المنفذ ${viewerPort} مشغول، إعادة محاولة بعد ثانيتين...`);
-        setTimeout(() => startViewer(), 2000);
+        log(`⚠️ المنفذ مشغول، إعادة محاولة بعد ثانية...`);
+        setTimeout(() => startViewer(), 1000);
       } else {
         log(`⚠️ خطأ في خادم الكاميرا: ${err.message}`);
       }
     });
     
-    server.listen(viewerPort, () => {
-      log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+    server.listen(desiredPort, () => {
+      const actualPort = server.address().port;
+      log(`🎥 كاميرا محلية على المنفذ ${actualPort}`);
+      process.env.VIEWER_PORT = actualPort;
+      
       if (process.env.NGROK_AUTHTOKEN) {
         (async () => {
           const ngrok = require('@ngrok/ngrok');
           await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-          const url = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
+          const url = await ngrok.forward({ addr: actualPort, authtoken_from_env: true });
           log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
           if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
         })().catch(e => log(`⚠️ ngrok error: ${e.message}`));
@@ -224,7 +222,7 @@ async function startViewer() {
       }
     });
     
-    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6, server });
+    mineflayerViewer(bot, { port: desiredPort, firstPerson: false, viewDistance: 6, server });
     viewerStarted = true;
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
@@ -359,7 +357,7 @@ async function createBot() {
   bot.on('end', async (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    await closeViewer(); // انتظار إغلاق الكاميرا
+    await closeViewer();
     viewerStarted = false;
     log(`🔄 سيتم إعادة تشغيل البوت بعد 3 ثوانٍ...`);
     setTimeout(() => {
