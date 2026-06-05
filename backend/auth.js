@@ -30,13 +30,34 @@ async function getTokenFromCode(code) {
 
 async function getMinecraftProfile(accessToken) {
     try {
+        // الحصول على معلومات المستخدم
         const graphResponse = await axios.get('https://graph.microsoft.com/v1.0/me', {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const email = graphResponse.data.userPrincipalName;
         const username = graphResponse.data.displayName || email.split('@')[0];
         console.log(`✅ تم تسجيل دخول مايكروسوفت: ${username}`);
-        return { username };
+
+        // محاولة الحصول على توكن ماينكرافت المرتبط بنفس الحساب
+        let minecraftToken = null;
+        try {
+            const flow = new Authflow(`user_${username}_${Date.now()}`, './ms-cache', {
+                authTitle: Titles.MinecraftJava,
+                deviceType: 'Win32',
+                flow: 'msal'
+            });
+            const result = await flow.getMinecraftJavaToken({ accessToken });
+            if (result && result.token) {
+                minecraftToken = result.token;
+                console.log(`✅ تم استرداد توكن ماينكرافت للمستخدم ${username}`);
+            } else {
+                console.log(`⚠️ لم يتم العثور على توكن ماينكرافت للمستخدم ${username}`);
+            }
+        } catch (err) {
+            console.log(`⚠️ فشل استرداد توكن ماينكرافت: ${err.message}`);
+        }
+        
+        return { username, minecraftToken };
     } catch (error) {
         console.error('❌ فشل الحصول على بيانات المستخدم:', error.message);
         throw error;
