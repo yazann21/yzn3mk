@@ -36,7 +36,7 @@ app.use(session({
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-    db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, mc_username TEXT, mc_profile_id TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, mc_username TEXT, mc_profile_id TEXT, auth_type TEXT DEFAULT 'offline', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
 // ========== مصادقة المستخدم ==========
@@ -85,20 +85,30 @@ app.get('/api/bots', (req, res) => {
     });
 });
 
+// إنشاء بوت جديد مع اختيار نوع الحساب
 app.post('/api/create-bot-cloud', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botName, botType, serverIp, teamNames, version } = req.body;
-    db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status) VALUES (?, ?, ?, ?, ?, ?, 'stopped')`,
-        [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10'], function(err) {
+    const { botName, botType, serverIp, teamNames, version, authType } = req.body;
+    db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status, auth_type) VALUES (?, ?, ?, ?, ?, ?, 'stopped', ?)`,
+        [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10', authType || 'offline'], function(err) {
             if (err) return res.status(500).json({ error: err.message });
-            res.json({ success: true, botId: this.lastID });
+            const newBotId = this.lastID;
+            if (authType === 'microsoft') {
+                // نبدأ عملية المصادقة فوراً
+                res.json({ success: true, botId: newBotId, need_verification: true });
+            } else {
+                // وضع غير مسجل: نشغل البوت مباشرة
+                startBot(newBotId, botName, null, botName, null, serverIp, botType, teamNames || '', version || '1.21.10');
+                db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', newBotId]);
+                res.json({ success: true, botId: newBotId, auto_started: true });
+            }
         });
 });
 
-// ========== مسار التحقق من البوت (flow: 'sisu') ==========
+// ========== مسار بدء المصادقة (للبوتات الحقيقية) ==========
 const pendingFlows = new Map();
 
-app.get('/api/bot-verify/:botId', async (req, res) => {
+app.get('/api/start-verification/:botId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const botId = parseInt(req.params.botId);
     
@@ -110,6 +120,9 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             });
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
+        if (bot.auth_type !== 'microsoft') {
+            return res.status(400).json({ error: 'هذا البوت ليس من النوع الحقيقي' });
+        }
 
         const userIdentifier = `bot_${botId}_${Date.now()}`;
         const flow = new Authflow(userIdentifier, './ms-cache', {
@@ -138,9 +151,14 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             db.run(`UPDATE bots SET mc_token = ?, mc_username = ?, mc_profile_id = ? WHERE id = ?`,
                 [tokenResult.token, tokenResult.profile.name, tokenResult.profile.id, botId], (err) => {
                 if (err) console.error('DB error:', err);
-                else console.log(`✅ Bot ${botId} verified with username ${tokenResult.profile.name}`);
+                else {
+                    console.log(`✅ Bot ${botId} verified with username ${tokenResult.profile.name}`);
+                    // بعد التحقق، نشغل البوت فوراً
+                    startBot(botId, bot.bot_name, tokenResult.token, tokenResult.profile.name, tokenResult.profile.id, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+                    db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+                }
                 pendingFlows.delete(botId);
-                if (!res.headersSent) res.json({ success: true, username: tokenResult.profile.name });
+                if (!res.headersSent) res.json({ success: true, username: tokenResult.profile.name, auto_started: true });
             });
         } else {
             throw new Error('لم يتم استلام التوكن');
@@ -153,57 +171,29 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
     }
 });
 
-app.post('/api/complete-auth', async (req, res) => {
-    const { botId } = req.body;
-    const flow = pendingFlows.get(parseInt(botId));
-    if (!flow) {
-        return res.status(400).json({ error: 'لا توجد عملية مصادقة معلقة' });
-    }
-    try {
-        const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
-        if (tokenResult && tokenResult.token && tokenResult.profile) {
-            db.run(`UPDATE bots SET mc_token = ?, mc_username = ?, mc_profile_id = ? WHERE id = ?`,
-                [tokenResult.token, tokenResult.profile.name, tokenResult.profile.id, botId], (err) => {
-                if (err) console.error('DB error:', err);
-                else console.log(`✅ Bot ${botId} verified via complete-auth with username ${tokenResult.profile.name}`);
-                pendingFlows.delete(parseInt(botId));
-                res.json({ success: true, username: tokenResult.profile.name });
-            });
-        } else {
-            res.status(500).json({ error: 'فشل الحصول على التوكن' });
-        }
-    } catch (err) {
-        console.error(`❌ Bot ${botId} completion failed:`, err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ========== تشغيل البوت (يدعم الوضعين) ==========
+// ========== تشغيل البوت (إذا كان قد تم التحقق مسبقاً) ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
-        
         if (botProcesses.has(botId)) return res.json({ success: true, alreadyRunning: true });
         
-        let mcToken = bot.mc_token;
-        let mcUsername = bot.mc_username;
-        let mcProfileId = bot.mc_profile_id;
-        
-        if (mcToken && mcToken !== '' && mcProfileId) {
-            startBot(botId, bot.bot_name, mcToken, mcUsername, mcProfileId, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+        if (bot.auth_type === 'microsoft' && bot.mc_token && bot.mc_token !== '') {
+            startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
             db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
             res.json({ success: true, mode: 'microsoft' });
-        } else {
+        } else if (bot.auth_type === 'offline') {
             startBot(botId, bot.bot_name, null, bot.bot_name, null, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
             db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
             res.json({ success: true, mode: 'offline' });
+        } else {
+            res.status(400).json({ error: 'البوت يحتاج إلى مصادقة مايكروسوفت أولاً' });
         }
     });
 });
 
-// ========== باقي مسارات التحكم ==========
+// ========== باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, camera) ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -259,7 +249,7 @@ app.post('/api/restart-bot', (req, res) => {
     setTimeout(() => {
         db.get('SELECT * FROM bots WHERE id = ?', [botId], (err, bot) => {
             if (bot) {
-                if (bot.mc_token && bot.mc_token !== '') {
+                if (bot.auth_type === 'microsoft' && bot.mc_token && bot.mc_token !== '') {
                     startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
                 } else {
                     startBot(botId, bot.bot_name, null, bot.bot_name, null, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
@@ -277,8 +267,11 @@ app.post('/api/clear-logs/:botId', (req, res) => {
     res.json({ success: true });
 });
 
+// كاميرا المراقبة (تعرض إطار iframe للمنفذ المحلي، ngrok سيجعلها عامة)
 app.get('/camera/:botId', (req, res) => {
     const port = 8080 + parseInt(req.params.botId);
+    // نحاول الحصول على رابط ngrok من سجلات البوت (يمكن تخزينه في قاعدة البيانات)
+    // لكن هنا نعرض الإطار المحلي – ngrok سيجعله متاحاً من الخارج إذا تم تشغيله
     res.send(`
         <!DOCTYPE html>
         <html>

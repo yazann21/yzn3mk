@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v5.0 - النسخة النهائية الكاملة
+// BOT CRAFT v6.0 - إنشاء متكامل بدون زر تحقق منفصل
 // ========================================
 
 let currentUser = null;
@@ -96,10 +96,6 @@ function logout() {
 
 function initEventListeners() {
     document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('createBotType').addEventListener('change', () => {});
-    document.getElementById('editBotType').addEventListener('change', (e) => {
-        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
-    });
     document.getElementById('createServerIp').addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     
     document.querySelectorAll('.nav-link').forEach(link => {
@@ -240,10 +236,12 @@ function renderBots() {
                     <div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div>
                     <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
                     <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
-                    ${isVerified ? `<div><i class="fas fa-check-circle" style="color:#22c55e"></i> ✓ مرتبط بحساب ${escapeHtml(b.mc_username || 'حقيقي')}</div>` : '<div><i class="fas fa-user-secret"></i> وضع غير مسجل (غير محقق)</div>'}
+                    ${b.auth_type === 'microsoft' 
+                        ? (isVerified ? `<div><i class="fas fa-check-circle" style="color:#22c55e"></i> ✓ مرتبط بحساب ${escapeHtml(b.mc_username)}</div>` : `<div><i class="fas fa-spinner fa-pulse"></i> في انتظار المصادقة</div>`)
+                        : `<div><i class="fas fa-user-secret"></i> وضع غير مسجل</div>`
+                    }
                 </div>
                 <div class="bot-actions" onclick="event.stopPropagation()">
-                    ${!isVerified ? `<button class="btn-verify" onclick="verifyBot(${b.id})"><i class="fas fa-key"></i> تحقق</button>` : ''}
                     ${b.status === 'online' 
                         ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button>
                            <button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
@@ -259,39 +257,67 @@ function renderBots() {
     }).join('');
 }
 
-// ========== دالة التحقق (تختفي بعد النجاح) ==========
-function verifyBot(id) {
-    fetch(`/api/bot-verify/${id}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.need_verification) {
-                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\n⚠️ تنبيه:\n- افتح الرابط في نافذة تصفح خاص (Incognito)\n- سجل دخولك بحساب مايكروسوفت الذي يملك Minecraft\n- أدخل الرمز خلال دقيقة\n\nبعد إتمام المصادقة، سيختفي زر "تحقق" ويرتبط الحساب.`);
-                
-                // التحقق كل 5 ثوانٍ من نجاح الربط
-                const interval = setInterval(() => {
-                    fetch(`/api/bots`, { credentials: 'include' })
-                        .then(res => res.json())
-                        .then(botsData => {
-                            const updatedBot = botsData.bots.find(b => b.id == id);
-                            if (updatedBot && updatedBot.mc_token && updatedBot.mc_token !== '') {
-                                clearInterval(interval);
-                                alert(`✅ تم التحقق بنجاح! البوت الآن مرتبط بحساب ${updatedBot.mc_username || 'الحقيقي'}`);
-                                loadBots(); // إعادة تحميل البوتات لإخفاء الزر
-                            }
-                        });
-                }, 5000);
-            } else if (data.success) {
-                alert(`✅ تم التحقق بنجاح!`);
-                loadBots();
-            } else {
-                alert('❌ فشل بدء عملية التحقق: ' + (data.error || 'خطأ'));
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            alert('حدث خطأ أثناء محاولة التحقق');
-        });
-}
+// ========== معالج إنشاء البوت ==========
+document.getElementById('createBotForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const botName = document.getElementById('createBotName').value;
+    const botType = document.getElementById('createBotType').value;
+    const serverIp = document.getElementById('createServerIp').value;
+    const version = document.getElementById('createVersion').value;
+    const authType = document.querySelector('input[name="authType"]:checked').value;
+    
+    const response = await fetch('/api/create-bot-cloud', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ botName, botType, serverIp, teamNames: '', version, authType })
+    });
+    const data = await response.json();
+    if (data.error) {
+        alert('خطأ: ' + data.error);
+        return;
+    }
+    if (data.need_verification) {
+        // بدء عملية المصادقة للحساب الحقيقي
+        alert('جاري بدء مصادقة مايكروسوفت... ستظهر نافذة منبثقة بالرابط والرمز.');
+        const verifyResponse = await fetch(`/api/start-verification/${data.botId}`, { credentials: 'include' });
+        const verifyData = await verifyResponse.json();
+        if (verifyData.need_verification) {
+            alert(`🔐 مصادقة حساب مايكروسوفت:\n\n🔗 الرابط: ${verifyData.verification_uri}\n🔢 الرمز: ${verifyData.user_code}\n\n⚠️ افتح الرابط في نافذة خاصة (Incognito)، سجل دخولك بحساب ماينكرافت، وأدخل الرمز.\n\nبعد إتمام المصادقة، سيدخل البوت تلقائياً.`);
+            // مراقبة حالة البوت حتى يدخل
+            const interval = setInterval(async () => {
+                const botsRes = await fetch('/api/bots', { credentials: 'include' });
+                const botsData = await botsRes.json();
+                const updatedBot = botsData.bots.find(b => b.id == data.botId);
+                if (updatedBot && updatedBot.status === 'online') {
+                    clearInterval(interval);
+                    alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
+                    navigateTo('bots');
+                    loadBots();
+                } else if (updatedBot && updatedBot.mc_token) {
+                    clearInterval(interval);
+                    alert(`✅ تم التحقق من الحساب! يمكنك الآن تشغيل البوت يدوياً.`);
+                    navigateTo('bots');
+                    loadBots();
+                }
+            }, 3000);
+        } else if (verifyData.success && verifyData.auto_started) {
+            alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
+            navigateTo('bots');
+            loadBots();
+        } else {
+            alert('❌ فشل بدء المصادقة: ' + (verifyData.error || 'خطأ'));
+        }
+    } else if (data.auto_started) {
+        alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
+        navigateTo('bots');
+        loadBots();
+    } else {
+        alert(`✅ تم إنشاء البوت بنجاح!`);
+        navigateTo('bots');
+        loadBots();
+    }
+});
 
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
@@ -301,15 +327,11 @@ function startBot(id) {
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
         if (data.success) {
-            if (data.mode === 'offline') {
-                alert('✅ تم تشغيل البوت في وضع غير مسجل (بدون حساب مايكروسوفت).');
-            } else {
-                alert('✅ تم تشغيل البوت بحساب مايكروسوفت الحقيقي.');
-            }
+            alert('✅ تم تشغيل البوت');
             loadBots();
             loadDashboard();
-        } else if (data.error) {
-            alert('خطأ: ' + data.error);
+        } else {
+            alert('❌ فشل التشغيل: ' + (data.error || 'خطأ'));
         }
     }).catch(err => {
         console.error(err);
@@ -362,25 +384,6 @@ function saveEditBot() {
         body: JSON.stringify({ botId, botName, botType, serverIp, teamNames, version })
     }).then(() => { closeEditModal(); loadBots(); });
 }
-
-document.getElementById('createBotForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    fetch('/api/create-bot-cloud', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-            botName: document.getElementById('createBotName').value,
-            botType: document.getElementById('createBotType').value,
-            serverIp: document.getElementById('createServerIp').value,
-            teamNames: '',
-            version: document.getElementById('createVersion').value
-        })
-    }).then(res => res.json()).then(data => {
-        if (data.error) alert('خطأ: ' + data.error);
-        else { alert('تم إنشاء البوت'); navigateTo('bots'); }
-    });
-});
 
 function openCameraViewer(botId) {
     window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
@@ -572,7 +575,6 @@ window.refreshInventory = refreshInventory;
 window.openBotControl = openBotControl;
 window.stopBot = stopBot;
 window.startBot = startBot;
-window.verifyBot = verifyBot;
 window.restartBot = restartBot;
 window.deleteBot = deleteBot;
 window.openEditModal = openEditModal;

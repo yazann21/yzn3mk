@@ -19,7 +19,7 @@
         <aside class="glass-sidebar">
             <div class="sidebar-header">
                 <div class="logo"><div class="logo-icon"><i class="fas fa-robot"></i></div><div class="logo-text">Bot<span>Craft</span></div></div>
-                <div class="sidebar-badge">v5.0</div>
+                <div class="sidebar-badge">v6.0</div>
             </div>
             <div class="sidebar-user" id="userSidebar" style="display: none;">
                 <div class="user-avatar"><i class="fas fa-user-astronaut"></i></div>
@@ -83,7 +83,7 @@
             <!-- Create Page -->
             <div id="createPage" class="page">
                 <div class="create-container">
-                    <div class="create-header"><div class="create-icon"><i class="fas fa-cogs"></i></div><h2>تهيئة بوت جديد</h2><p>أدخل معلومات البوت لبدء التشغيل الفوري</p></div>
+                    <div class="create-header"><div class="create-icon"><i class="fas fa-cogs"></i></div><h2>تهيئة بوت جديد</h2><p>اختر نوع الحساب وأدخل معلومات البوت</p></div>
                     <div class="create-form-wrapper glass">
                         <form id="createBotForm">
                             <div class="form-row">
@@ -94,7 +94,19 @@
                                 <div class="input-group floating"><input type="text" id="createServerIp" required><label>🌐 عنوان السيرفر</label><span class="input-border"></span></div>
                                 <div class="input-group floating"><select id="createVersion" required></select><label>🔧 إصدار ماينكرافت</label><span class="input-border"></span></div>
                             </div>
-                            <div class="info-banner"><i class="fas fa-info-circle"></i><span>يمكنك لاحقاً الضغط على زر "تحقق" لربط حساب حقيقي، أو تشغيل البوت بدون تحقق ليدخل في وضع غير مسجل.</span></div>
+                            <div class="form-row">
+                                <div class="input-group floating" style="grid-column: span 2;">
+                                    <div style="display: flex; gap: 20px; padding: 10px 0;">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                            <input type="radio" name="authType" value="offline" checked> 🎭 وضع غير مسجل (دخول بالاسم فقط)
+                                        </label>
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                            <input type="radio" name="authType" value="microsoft"> 🔐 حساب مايكروسوفت حقيقي (يتطلب مصادقة)
+                                        </label>
+                                    </div>
+                                    <span class="input-border"></span>
+                                </div>
+                            </div>
                             <button type="submit" class="btn-submit-glow"><i class="fas fa-rocket"></i><span>إنشاء البوت</span></button>
                         </form>
                     </div>
