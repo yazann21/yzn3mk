@@ -39,7 +39,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== مصادقة المستخدم ==========
+// مسارات المستخدم (كما هي)
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -77,7 +77,7 @@ app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
-// ========== إدارة البوتات ==========
+// إدارة البوتات
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -95,7 +95,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مسار التحقق من البوت (المعدل بالمفتاح doSisuAuth) ==========
+// ===== مسار التحقق من البوت (المعدل نهائياً) =====
 const pendingFlows = new Map();
 
 app.get('/api/bot-verify/:botId', async (req, res) => {
@@ -110,87 +110,47 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // ✅ إنشاء Authflow باستخدام doSisuAuth: true كما هو مطلوب
+        // ✅ الحل النهائي: use live flow with doSisuAuth
         const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
             authTitle: Titles.MinecraftJava,
-            doSisuAuth: true,      // هذا الخيار هو الحل الأساسي لمشكلة 403
+            doSisuAuth: true,
             deviceType: 'Win32',
-            flow: 'msal',          // استخدام msal للحصول على توكن مايكروسوفت
+            flow: 'live',
             onMsaCode: (data) => {
                 console.log(`\n🔐 مصادقة البوت ${botId}:`);
                 console.log(`🔗 الرابط: ${data.verification_uri}`);
                 console.log(`🔢 الرمز: ${data.user_code}`);
-                console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
                 pendingFlows.set(botId, flow);
                 if (!res.headersSent) {
                     res.json({
                         need_verification: true,
                         verification_uri: data.verification_uri,
                         user_code: data.user_code,
-                        expires_in: data.expires_in,
-                        message: 'يجب إتمام المصادقة باستخدام الرابط والرمز'
+                        expires_in: data.expires_in
                     });
                 }
             }
         });
 
-        // محاولة الحصول على التوكن بعد استدعاء onMsaCode
-        flow.getMinecraftJavaToken()
-            .then(tokenResult => {
-                if (tokenResult && tokenResult.token) {
-                    db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
-                        if (err) console.error('DB update error:', err);
-                        else console.log(`✅ Bot ${botId} verified successfully.`);
-                        pendingFlows.delete(botId);
-                        if (!res.headersSent) {
-                            res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
-                        }
-                    });
-                } else {
-                    throw new Error('لم يتم استلام التوكن');
-                }
-            })
-            .catch(err => {
-                console.error(`❌ Bot ${botId} verification failed:`, err);
-                if (!res.headersSent) {
-                    const pending = pendingFlows.get(botId);
-                    if (pending && pending.onMsaCodeCalled) {
-                        // إذا كان الرابط والرمز قد أرسلا بالفعل، لا نعيد إرسالهما
-                        res.status(500).json({ error: 'فشل المصادقة: ' + err.message });
-                    }
-                }
-            });
-    } catch (error) {
-        console.error('Error in /api/bot-verify:', error);
-        res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
-    }
-});
-
-// مسار لإتمام المصادقة بعد إدخال الرمز (اختياري ولكن مفيد)
-app.post('/api/complete-auth', async (req, res) => {
-    const { botId } = req.body;
-    const flow = pendingFlows.get(parseInt(botId));
-    if (!flow) {
-        return res.status(400).json({ error: 'لا توجد عملية مصادقة معلقة لهذا البوت' });
-    }
-    try {
+        // الانتظار حتى يتم إدخال الرمز والحصول على التوكن
         const tokenResult = await flow.getMinecraftJavaToken();
         if (tokenResult && tokenResult.token) {
             db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
-                if (err) {
-                    console.error('DB update error:', err);
-                    return res.status(500).json({ error: 'فشل حفظ التوكن' });
+                if (err) console.error('DB update error:', err);
+                else console.log(`✅ Bot ${botId} verified successfully.`);
+                pendingFlows.delete(botId);
+                if (!res.headersSent) {
+                    res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
                 }
-                console.log(`✅ Bot ${botId} verified successfully via /complete-auth.`);
-                pendingFlows.delete(parseInt(botId));
-                res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
             });
         } else {
-            res.status(500).json({ error: 'فشل الحصول على التوكن' });
+            throw new Error('لم يتم استلام التوكن');
         }
-    } catch (err) {
-        console.error(`❌ Bot ${botId} completion failed:`, err);
-        res.status(500).json({ error: 'فشل إتمام المصادقة: ' + err.message });
+    } catch (error) {
+        console.error(`❌ Bot ${botId} verification failed:`, error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'فشل التحقق: ' + error.message });
+        }
     }
 });
 
@@ -201,11 +161,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         if (!bot.mc_token) {
-            return res.status(400).json({ 
-                need_minecraft_auth: true, 
-                error: 'need_minecraft_auth', 
-                message: 'يجب ربط حساب ماينكرافت أولاً' 
-            });
+            return res.status(400).json({ need_minecraft_auth: true, error: 'need_minecraft_auth', message: 'يجب ربط حساب ماينكرافت أولاً' });
         }
         if (botProcesses.has(botId)) return res.json({ success: true });
         startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
@@ -214,7 +170,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, camera)
+// باقي المسارات (نفس السابق)
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -243,20 +199,17 @@ app.put('/api/update-bot', (req, res) => {
 });
 
 app.get('/api/bot-logs/:botId', (req, res) => {
-    const { botId } = req.params;
-    const logs = getBotLogs(parseInt(botId));
+    const logs = getBotLogs(parseInt(req.params.botId));
     res.json({ logs });
 });
 
 app.get('/api/bot-stats/:botId', (req, res) => {
-    const { botId } = req.params;
-    const stats = getBotStats(parseInt(botId));
+    const stats = getBotStats(parseInt(req.params.botId));
     res.json(stats);
 });
 
 app.get('/api/bot-inventory/:botId', (req, res) => {
-    const { botId } = req.params;
-    const inventory = getBotInventory(parseInt(botId));
+    const inventory = getBotInventory(parseInt(req.params.botId));
     res.json(inventory);
 });
 
@@ -282,27 +235,16 @@ app.post('/api/restart-bot', (req, res) => {
 });
 
 app.post('/api/clear-logs/:botId', (req, res) => {
-    // فقط إفراغ مصفوفة السجلات
-    const { botId } = req.params;
-    const logs = getBotLogs(parseInt(botId));
+    const logs = getBotLogs(parseInt(req.params.botId));
     if (logs) logs.length = 0;
     res.json({ success: true });
 });
 
 app.get('/camera/:botId', (req, res) => {
     const port = 8080 + parseInt(req.params.botId);
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head><title>Bot Camera</title><style>body{margin:0;background:#0a0a1a;}</style></head>
-        <body>
-            <iframe src="http://localhost:${port}" style="width:100%;height:100vh;border:none;"></iframe>
-        </body>
-        </html>
-    `);
+    res.send(`<!DOCTYPE html><html><head><title>Bot Camera</title><style>body{margin:0;background:#0a0a1a;}</style></head><body><iframe src="http://localhost:${port}" style="width:100%;height:100vh;border:none;"></iframe></body></html>`);
 });
 
 const server = app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
-
 process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
 process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
