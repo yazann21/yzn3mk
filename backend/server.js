@@ -5,7 +5,7 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
+const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, getBotCameraUrl, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 
 const app = express();
@@ -95,7 +95,6 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== حفظ التوكن الذي يرسله البوت بعد المصادقة الذاتية ==========
 app.post('/api/save-bot-token', (req, res) => {
     const { botId, mcToken, mcUsername, mcProfileId } = req.body;
     if (!botId || !mcToken || !mcUsername || !mcProfileId) {
@@ -112,7 +111,7 @@ app.post('/api/save-bot-token', (req, res) => {
         });
 });
 
-// ========== تشغيل البوت (يمرر AUTH_TYPE و API_URL) ==========
+// ========== تشغيل البوت ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -125,15 +124,13 @@ app.post('/api/start-cloud-bot', (req, res) => {
         let mcProfileId = bot.mc_profile_id;
         let authType = bot.auth_type || 'offline';
         
-        // إذا كان البوت من نوع "حقيقي" وليس لديه توكن، سنمرر AUTH_TYPE='microsoft' فقط
-        // البوت نفسه سيتولى المصادقة عند الحاجة
         startBot(botId, bot.bot_name, mcToken, mcUsername, mcProfileId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, authType);
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
         res.json({ success: true, mode: authType });
     });
 });
 
-// ========== بقية مسارات التحكم (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, camera) ==========
+// ========== بقية مسارات التحكم ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -203,9 +200,29 @@ app.post('/api/clear-logs/:botId', (req, res) => {
     res.json({ success: true });
 });
 
+// ========== كاميرا المراقبة: إعادة توجيه إلى رابط ngrok العام ==========
 app.get('/camera/:botId', (req, res) => {
-    const port = 8080 + parseInt(req.params.botId);
-    res.send(`<!DOCTYPE html><html><head><title>Bot Camera</title><style>body{margin:0;background:#0a0a1a;}</style></head><body><iframe src="http://localhost:${port}" style="width:100%;height:100vh;border:none;"></iframe></body></html>`);
+    const botId = parseInt(req.params.botId);
+    const cameraUrl = getBotCameraUrl(botId);
+    if (cameraUrl) {
+        // إعادة توجيه مباشر إلى رابط ngrok العام
+        res.redirect(cameraUrl);
+    } else {
+        // إذا لم يتوفر رابط عام، عرض رسالة خطأ
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
+            <body>
+                <h1>📷 كاميرا البوت</h1>
+                <p>لم يتم الحصول على رابط الكاميرا العام بعد.</p>
+                <p>تأكد من أن البوت قيد التشغيل وأن متغير <code>NGROK_AUTHTOKEN</code> مضبوط في البيئة.</p>
+                <p>يمكنك أيضاً تجربة فتح السجلات للبحث عن رابط ngrok يدوياً.</p>
+                <button onclick="window.location.href='/bots'">العودة إلى البوتات</button>
+            </body>
+            </html>
+        `);
+    }
 });
 
 const server = app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
