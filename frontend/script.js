@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع إصلاح نافذة التحقق
+// BOT CRAFT v6.0 - كامل مع عرض المصادقة داخل السجلات
 // ========================================
 
 let currentUser = null;
@@ -42,6 +42,14 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuth();
     loadDashboard();
     loadBots();
+
+    // مستمعات أزرار المصادقة
+    document.getElementById('copyUriBtn')?.addEventListener('click', () => copyToClipboard(document.getElementById('authUriLink')?.textContent));
+    document.getElementById('copyCodeBtn')?.addEventListener('click', () => copyToClipboard(document.getElementById('authUserCode')?.textContent));
+    document.getElementById('openUriBtn')?.addEventListener('click', () => {
+        const uri = document.getElementById('authUriLink')?.href;
+        if (uri) window.open(uri, '_blank');
+    });
 });
 
 function initAuth() {
@@ -257,7 +265,7 @@ function renderBots() {
     }).join('');
 }
 
-// ========== إنشاء بوت جديد مع معالجة المصادقة ==========
+// ========== إنشاء بوت جديد ==========
 document.getElementById('createBotForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const botName = document.getElementById('createBotName').value;
@@ -266,7 +274,6 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
     const version = document.getElementById('createVersion').value;
     const authType = document.querySelector('input[name="authType"]:checked').value;
     
-    // تعطيل الزر مؤقتاً لمنع التكرار
     const submitBtn = document.querySelector('#createBotForm button[type="submit"]');
     const originalText = submitBtn.innerHTML;
     submitBtn.disabled = true;
@@ -287,14 +294,14 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
             return;
         }
         if (data.need_verification) {
-            // بدء عملية المصادقة للحساب الحقيقي
-            alert('🔐 جاري بدء مصادقة مايكروسوفت... ستصلك نافذة منبثقة بالرابط والرمز.');
+            alert('🔐 جاري بدء مصادقة مايكروسوفت... ستظهر معلومات المصادقة في سجلات البوت.');
             const verifyResponse = await fetch(`/api/start-verification/${data.botId}`, { credentials: 'include' });
             const verifyData = await verifyResponse.json();
             if (verifyData.need_verification) {
-                // ✅ هنا نعرض الرابط والرمز في نافذة منبثقة
-                alert(`🔐 مصادقة حساب مايكروسوفت:\n\n🔗 الرابط: ${verifyData.verification_uri}\n🔢 الرمز: ${verifyData.user_code}\n\n⚠️ تنبيه:\n- افتح الرابط في نافذة خاصة (Incognito)\n- سجل دخولك بحساب مايكروسوفت الذي يملك Minecraft Java Edition\n- أدخل الرمز خلال ${verifyData.expires_in} ثانية\n\nبعد إتمام المصادقة، سيدخل البوت تلقائياً.`);
-                // مراقبة حالة البوت حتى يدخل
+                // سيتم عرض الرابط والرمز في سجلات البوت (عند فتح السجلات)
+                // نوجه المستخدم لفتح السجلات
+                alert(`🔐 مصادقة حساب مايكروسوفت مطلوبة.\nالرمز: ${verifyData.user_code}\nالرابط: ${verifyData.verification_uri}\n\nافتح الرابط في نافذة خاصة وأدخل الرمز.\nسيظهر رابط ورمز في سجلات البوت أيضاً.`);
+                // مراقبة حالة البوت
                 const interval = setInterval(async () => {
                     const botsRes = await fetch('/api/bots', { credentials: 'include' });
                     const botsData = await botsRes.json();
@@ -408,12 +415,25 @@ function openCameraViewer(botId) {
 
 function openLogs(id) {
     currentLogsBotId = id;
-    document.getElementById('logsModal').style.display = 'flex';
+    const modal = document.getElementById('logsModal');
+    if (modal) modal.style.display = 'flex';
     if (logsInterval) clearInterval(logsInterval);
     const fetchLogs = () => {
         fetch(`/api/bot-logs/${id}`, { credentials: 'include' })
             .then(res => res.json())
-            .then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); });
+            .then(data => { 
+                const logsText = (data.logs || []).join('\n');
+                document.getElementById('logsText').innerHTML = logsText;
+                // استخراج الرابط والرمز من النص
+                const uriMatch = logsText.match(/🔗 الرابط: (https:\/\/[^\s]+)/);
+                const codeMatch = logsText.match(/🔢 الرمز: ([A-Z0-9]+)/);
+                if (uriMatch && codeMatch) {
+                    showAuthInfo(uriMatch[1], codeMatch[1]);
+                } else {
+                    hideAuthInfo();
+                }
+            })
+            .catch(err => console.error('Failed to fetch logs:', err));
     };
     fetchLogs();
     logsInterval = setInterval(fetchLogs, 3000);
@@ -582,6 +602,28 @@ function populateVersions(selectId) {
 populateVersions('createVersion');
 populateVersions('editVersion');
 
+// ========== دوال عرض معلومات المصادقة داخل السجلات ==========
+function showAuthInfo(uri, code) {
+    const authBox = document.getElementById('authInfoBox');
+    const authUriLink = document.getElementById('authUriLink');
+    const authUserCode = document.getElementById('authUserCode');
+    if (authBox && authUriLink && authUserCode) {
+        authUriLink.href = uri;
+        authUriLink.textContent = uri;
+        authUserCode.textContent = code;
+        authBox.style.display = 'block';
+    }
+}
+function hideAuthInfo() {
+    const authBox = document.getElementById('authInfoBox');
+    if (authBox) authBox.style.display = 'none';
+}
+function copyToClipboard(text) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => alert('تم نسخ النص!')).catch(() => alert('فشل النسخ'));
+}
+
+// ربط الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
