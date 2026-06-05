@@ -7,6 +7,8 @@ const axios = require('axios');
 
 let bot = null;
 let logFile = null;
+let viewerStarted = false;
+let viewerServer = null;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -154,6 +156,74 @@ function attackNearest() {
   }
 }
 
+// إدارة خادم الكاميرا (إغلاق آمن)
+async function closeViewer() {
+  if (viewerServer) {
+    return new Promise((resolve) => {
+      viewerServer.close(() => {
+        log(`🛑 خادم الكاميرا مغلق`);
+        viewerServer = null;
+        viewerStarted = false;
+        resolve();
+      });
+      setTimeout(() => {
+        if (viewerServer) {
+          try { viewerServer.closeAllConnections?.(); } catch(e) {}
+          viewerServer = null;
+          viewerStarted = false;
+          resolve();
+        }
+      }, 500);
+    });
+  }
+  viewerStarted = false;
+  return Promise.resolve();
+}
+
+async function startViewer() {
+  if (viewerStarted) return;
+  try {
+    await closeViewer();
+    const desiredPort = 0; // منفذ ديناميكي (يختار النظام منفذاً حراً)
+    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+    const http = require('http');
+    const express = require('express');
+    const app = express();
+    const server = http.createServer(app);
+    viewerServer = server;
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        log(`⚠️ منفذ الكاميرا مشغول، إعادة محاولة بعد ثانية...`);
+        setTimeout(() => startViewer(), 1000);
+      } else {
+        log(`⚠️ خطأ في خادم الكاميرا: ${err.message}`);
+      }
+    });
+
+    server.listen(desiredPort, () => {
+      const actualPort = server.address().port;
+      log(`🎥 كاميرا محلية على المنفذ ${actualPort}`);
+      if (process.env.NGROK_AUTHTOKEN) {
+        (async () => {
+          const ngrok = require('@ngrok/ngrok');
+          await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+          const url = await ngrok.forward({ addr: actualPort, authtoken_from_env: true });
+          log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
+          if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
+        })().catch(e => log(`⚠️ ngrok error: ${e.message}`));
+      } else {
+        log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+      }
+    });
+
+    mineflayerViewer(bot, { port: desiredPort, firstPerson: false, viewDistance: 6, server });
+    viewerStarted = true;
+  } catch (err) {
+    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
+  }
+}
+
 async function authenticateBot() {
   log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
   const userIdentifier = `bot_${config.botId}_${Date.now()}`;
@@ -238,7 +308,7 @@ async function createBot() {
 
   bot.on('login', () => log(`✅ دخل البوت بنجاح باسم ${bot.username}`));
   
-  bot.on('spawn', () => {
+  bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
     setTimeout(() => equipEverythingFast(), 100);
     setInterval(() => equipEverythingFast(), 1000);
@@ -251,6 +321,9 @@ async function createBot() {
       }
     }, 1000);
     
+    // إعادة تشغيل الكاميرا (تأكد من عدم وجود تعارض)
+    if (!viewerStarted) await startViewer();
+    
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     } else if (config.botType === 'hunter') {
@@ -260,7 +333,6 @@ async function createBot() {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
           log(`😨 تعرض البوت للضرب! قطع الاتصال فوراً.`);
-          // قطع اتصال نظيف ثم خروج
           if (bot && !isDisconnecting) {
             isDisconnecting = true;
             bot.end();
@@ -290,9 +362,10 @@ async function createBot() {
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
   
-  bot.on('end', (reason) => {
+  bot.on('end', async (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
+    await closeViewer();  // تحرير المنفذ عند الانقطاع
     if (isDisconnecting) {
       process.exit(0);
     }
@@ -301,41 +374,46 @@ async function createBot() {
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-// معالجة أوامر قطع الاتصال النظيف من العملية الأب
-process.on('message', (msg) => {
+// معالجة أوامر قطع الاتصال النظيف
+process.on('message', async (msg) => {
   if (msg && msg.type === 'disconnect') {
     log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
     if (bot && !isDisconnecting) {
       isDisconnecting = true;
       bot.end();
-      setTimeout(() => {
-        if (!isDisconnecting) process.exit(0);
-      }, 1000);
+      await closeViewer();
+      setTimeout(() => process.exit(0), 500);
     } else {
+      await closeViewer();
       process.exit(0);
     }
   } else if (msg && msg.type === 'force_exit') {
     log(`📢 أمر إنهاء فوري (غير نظيف).`);
+    await closeViewer();
     process.exit(0);
   }
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   if (bot && !isDisconnecting) {
     isDisconnecting = true;
     bot.end();
+    await closeViewer();
     setTimeout(() => process.exit(0), 500);
   } else {
+    await closeViewer();
     process.exit(0);
   }
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   if (bot && !isDisconnecting) {
     isDisconnecting = true;
     bot.end();
+    await closeViewer();
     setTimeout(() => process.exit(0), 500);
   } else {
+    await closeViewer();
     process.exit(0);
   }
 });
