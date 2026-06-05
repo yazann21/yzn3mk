@@ -111,29 +111,28 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
         // إنشاء تدفق جديد باستخدام إعدادات Microsoft الصحيحة
-        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
-            authTitle: Titles.MinecraftJava,
-            deviceType: 'Win32',
-            flow: 'live',
-            onMsaCode: (data) => {
-                console.log(`🔐 مصادقة البوت ${botId}:`);
-                console.log(`🔗 الرابط: ${data.verification_uri}`);
-                console.log(`🔢 الرمز: ${data.user_code}`);
-                console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
-                // حفظ بيانات الرابط والرمز لاستخدامها لاحقاً
-                pendingFlows.set(botId, { flow, data });
-                // إرسال بيانات المصادقة إلى الواجهة الأمامية لتعرضها
-                if (!res.headersSent) {
-                    res.json({
-                        need_verification: true,
-                        verification_uri: data.verification_uri,
-                        user_code: data.user_code,
-                        expires_in: data.expires_in,
-                        message: 'يجب إتمام المصادقة أولاً'
-                    });
-                }
-            }
-        });
+// ✅ الكود المُعدّل
+const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+    authTitle: Titles.MinecraftJava,
+    deviceType: 'Win32',
+    flow: 'live',
+    doSisuAuth: true, // هذا هو الخيار السحري الذي يحل المشكلة
+    onMsaCode: (data) => {
+        console.log(`\n🔐 مصادقة البوت ${botId}:`);
+        console.log(`🔗 الرابط: ${data.verification_uri}`);
+        console.log(`🔢 الرمز: ${data.user_code}`);
+        pendingFlows.set(botId, { flow, data });
+        if (!res.headersSent) {
+            res.json({
+                need_verification: true,
+                verification_uri: data.verification_uri,
+                user_code: data.user_code,
+                expires_in: data.expires_in,
+                message: 'يجب إتمام المصادقة أولاً'
+            });
+        }
+    }
+});
 
         // محاولة الحصول على التوكن بعد استدعاء onMsaCode
         flow.getMinecraftJavaToken()
