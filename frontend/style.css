@@ -1,6 +1,6 @@
 /* ========================================
    BOT CRAFT - PROFESSIONAL MINECRAFT BOT CONTROLLER
-   التصميم النهائي المرتب (بدون تراكب)
+   التصميم النهائي المرتب (بدون تراكب - خيارات مصادقة مضغوطة)
    ======================================== */
 
 * {
@@ -605,37 +605,36 @@ body {
 .input-group.floating input:focus ~ .input-border,
 .input-group.floating select:focus ~ .input-border { width: 100%; }
 
-/* تنسيق خيارات المصادقة (حقيقي / غير مسجل) - حل مشكلة التراكب */
+/* ========================================
+   خيارات المصادقة - نسخة مضغوطة ومرتبة
+   ======================================== */
 .auth-options {
     display: flex;
-    gap: 30px;
-    padding: 15px 0;
-    flex-wrap: wrap;
+    gap: 24px;
+    padding: 10px 0;
     align-items: center;
+    flex-wrap: wrap;
 }
 .auth-option {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    padding: 10px 24px;
-    border-radius: 40px;
+    gap: 6px;
     cursor: pointer;
-    transition: all 0.3s ease;
-}
-.auth-option:hover {
-    background: rgba(124, 58, 237, 0.2);
-    transform: translateY(-2px);
+    font-size: 14px;
+    background: transparent;
+    padding: 0;
 }
 .auth-option input {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
+    margin: 0;
     cursor: pointer;
     accent-color: var(--primary);
 }
 .auth-option span {
     font-size: 14px;
-    font-weight: 500;
+    font-weight: normal;
+    white-space: nowrap;
 }
 
 .btn-submit-glow {
@@ -968,8 +967,8 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .form-row { grid-template-columns: 1fr; }
     .settings-container { grid-template-columns: 1fr; }
     .inventory-grid { grid-template-columns: repeat(6, 1fr); }
-    .auth-options { flex-direction: column; gap: 12px; width: 100%; }
-    .auth-option { justify-content: center; }
+    .auth-options { gap: 16px; }
+    .auth-option span { white-space: normal; }
 }
 
 @media (max-width: 480px) {
