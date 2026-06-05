@@ -326,26 +326,44 @@ function startBot(id) {
         credentials: 'include',
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
-        if (data.need_auth && data.verification_uri && data.user_code) {
-            alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.\n\nبعد إتمام المصادقة، اضغط OK وسيتم تشغيل البوت.`);
-            
-            fetch('/api/complete-auth', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ botId: parseInt(id) })
-            }).then(res => res.json()).then(completeData => {
-                if (completeData.success) {
-                    alert('✅ تم التحقق من البوت وتشغيله بنجاح!');
-                    loadBots();
-                    loadDashboard();
-                } else {
-                    alert('❌ فشل تشغيل البوت: ' + (completeData.error || 'خطأ غير معروف'));
-                }
-            }).catch(err => {
-                console.error('Completion error:', err);
-                alert('حدث خطأ أثناء إتمام المصادقة');
-            });
+        if (data.need_minecraft_auth) {
+            // طلب مصادقة مايكروسوفت للحصول على التوكن
+            fetch(`/api/bot-verify/${id}`, { credentials: 'include' })
+                .then(verifyRes => verifyRes.json())
+                .then(verifyData => {
+                    if (verifyData.need_verification) {
+                        // عرض رابط ورمز المصادقة في نافذة منبثقة
+                        alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${verifyData.verification_uri}\n🔢 الرمز: ${verifyData.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.\n\nبعد إتمام المصادقة، اضغط OK وسيتم تشغيل البوت.`);
+                        
+                        // بعد إتمام المصادقة، نطلب من الخادم إتمام العملية
+                        fetch('/api/complete-auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({ botId: parseInt(id) })
+                        }).then(completeRes => completeRes.json()).then(completeData => {
+                            if (completeData.success) {
+                                alert('✅ تم التحقق من البوت بنجاح!');
+                                loadBots();
+                                loadDashboard();
+                            } else {
+                                alert('❌ فشل تشغيل البوت: ' + (completeData.error || 'خطأ غير معروف'));
+                            }
+                        }).catch(err => {
+                            console.error('Completion error:', err);
+                            alert('حدث خطأ أثناء إتمام المصادقة');
+                        });
+                    } else if (verifyData.success) {
+                        alert('✅ تم التحقق من البوت بنجاح!');
+                        loadBots();
+                        loadDashboard();
+                    } else {
+                        alert('❌ فشل المصادقة: ' + (verifyData.error || 'خطأ غير معروف'));
+                    }
+                }).catch(err => {
+                    console.error('Verification error:', err);
+                    alert('حدث خطأ أثناء مصادقة البوت');
+                });
         } else if (data.success) {
             loadBots();
             loadDashboard();
