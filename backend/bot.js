@@ -17,18 +17,17 @@ let gearCheckInterval = null;
 let autoTotemInterval = null;
 let killCount = 0;
 let deathCount = 0;
-let retryCount = 0;
-const MAX_RETRIES = 3;
 
 const args = process.argv.slice(2);
 const config = {
-  username: process.env.BOT_NAME || args[0] || 'BotUser',
-  uuid: 'offline-uuid',
-  serverIp: process.env.SERVER_IP || args[2],
-  botType: process.env.BOT_TYPE || args[3] || 'afk',
-  botId: process.env.BOT_ID || args[4] || 'unknown',
-  teamNames: process.env.TEAM_NAMES || args[5] || '',
-  version: process.env.MC_VERSION || args[6] || '1.21.10',
+  botId: process.env.BOT_ID || args[0] || 'unknown',
+  minecraftToken: process.env.MC_TOKEN || args[1] || null,
+  username: process.env.BOT_USERNAME || args[2] || 'BotUser',
+  profileId: process.env.BOT_PROFILE_ID || args[3] || 'offline-uuid',
+  serverIp: process.env.SERVER_IP || args[4],
+  botType: process.env.BOT_TYPE || args[5] || 'afk',
+  teamNames: process.env.TEAM_NAMES || args[6] || '',
+  version: process.env.MC_VERSION || args[7] || '1.21.10'
 };
 
 if (config.teamNames) teamList = config.teamNames.split(',').map(n => n.trim().toLowerCase());
@@ -152,24 +151,36 @@ function attackNearest() {
 }
 
 function createBot() {
-  log(`🤖 تشغيل بوت ${config.botType} (وضع offline) على ${config.serverIp} [${config.version}]`);
-  bot = mineflayer.createBot({
+  log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}] باسم ${config.username}`);
+  
+  const auth = config.minecraftToken ? 'microsoft' : 'offline';
+  const authConfig = {
     host: config.serverIp,
+    port: 25565,
     username: config.username,
-    auth: 'offline',
+    auth: auth,
     version: config.version,
     checkTimeoutInterval: 0,
     connectTimeout: 60000,
     keepAlive: true,
     viewDistance: 'tiny'
-  });
+  };
+  
+  if (config.minecraftToken && config.profileId) {
+    authConfig.session = {
+      accessToken: config.minecraftToken,
+      selectedProfile: { id: config.profileId, name: config.username }
+    };
+  }
+  
+  bot = mineflayer.createBot(authConfig);
 
   bot.loadPlugin(pathfinder);
 
-  bot.on('login', () => log(`✅ دخل البوت بنجاح (وضع offline)`));
+  bot.on('login', () => log(`✅ دخل البوت بنجاح باسم ${bot.username}`));
+  
   bot.on('spawn', () => {
     log(`📍 ظهر البوت في العالم`);
-    retryCount = 0;
     setTimeout(() => equipEverythingFast(), 500);
     gearCheckInterval = setInterval(() => equipEverythingFast(), 1000);
     autoTotemInterval = setInterval(() => {
@@ -220,18 +231,7 @@ function createBot() {
   });
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  bot.on('end', (reason) => { 
-    log(`❌ انقطع الاتصال: ${reason}`); 
-    cleanup(); 
-    viewerStarted = false; 
-    if (isRunning && retryCount < MAX_RETRIES) {
-      retryCount++;
-      log(`🔄 محاولة إعادة الاتصال (${retryCount}/${MAX_RETRIES})...`);
-      setTimeout(createBot, 5000);
-    } else if (retryCount >= MAX_RETRIES) {
-      log(`❌ تم الوصول للحد الأقصى من المحاولات. البوت لن يحاول الاتصال مجدداً.`);
-    }
-  });
+  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
   bot.on('error', (err) => log(`⚠️ خطأ: ${err.message}`));
 }
 
