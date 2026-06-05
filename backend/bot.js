@@ -225,12 +225,11 @@ async function createBot() {
       accessToken: config.minecraftToken,
       selectedProfile: { id: config.profileId, name: config.username }
     } : undefined,
-    connectTimeout: 5000,          // 5 ثوانٍ للسيرفرات البطيئة (لتجنب الانقطاع المبكر)
+    connectTimeout: 5000,
     checkTimeoutInterval: 0,
     keepAlive: true,
     viewDistance: 'tiny',
     skipValidation: true,
-    // reconnect: true (افتراضي) – أسرع آلية لإعادة الاتصال
   };
   
   bot = mineflayer.createBot(authConfig);
@@ -259,8 +258,8 @@ async function createBot() {
     } else if (config.botType === 'coward') {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
-          log(`😨 تعرض البوت للضرب! يتم قطع الاتصال فوراً.`);
-          bot.end(); // فقط ننهي الاتصال، والمكتبة ستعيد الاتصال تلقائياً بسرعة
+          log(`😨 تعرض البوت للضرب! قطع الاتصال فوراً.`);
+          bot.end(); // فقط ننهي الاتصال، والمكتبة ستعيد المحاولة بسرعة
         }
       });
     }
@@ -286,31 +285,25 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    // لا نستدعي createBot() لأن reconnect سيتولى إعادة الاتصال تلقائياً وبسرعة
+    // لا حاجة لإعادة الاتصال اليدوي، mineflayer يقوم بذلك تلقائياً بسرعة
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-// معالجة أوامر الإنهاء السريع من العملية الأب
+// استجابة فورية لأمر الإنهاء من الأب
 process.on('message', (msg) => {
   if (msg && msg.type === 'force_exit') {
-    log(`📢 أمر إنهاء فوري من الخادم الرئيسي.`);
+    // خروج فوري بدون أي تنظيف
     process.exit(0);
   }
 });
 
 process.on('SIGINT', () => {
-  log('🛑 إغلاق (SIGINT)');
-  cleanup();
-  if (bot) bot.end();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  log('🛑 إغلاق (SIGTERM)');
-  cleanup();
-  if (bot) bot.end();
   process.exit(0);
 });
 

@@ -17,7 +17,7 @@ function killProcessGracefully(proc, botId) {
         try { process.kill(proc.pid, 'SIGKILL'); } catch(e) {}
         resolve();
       }
-    }, 500);
+    }, 100); // 100 مللي ثانية كحد أقصى
     proc.once('exit', () => {
       killed = true;
       clearTimeout(timeout);
@@ -28,10 +28,10 @@ function killProcessGracefully(proc, botId) {
 }
 
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
-  // قتل أي عملية سابقة لنفس البوت بشكل كامل
+  // قتل أي عملية سابقة
   const existing = botProcesses.get(botId);
   if (existing) {
-    console.log(`[Bot ${botId}] إنهاء العملية السابقة...`);
+    console.log(`[Bot ${botId}] إنهاء العملية السابقة فوراً...`);
     if (existing.connected) {
       try { existing.send({ type: 'force_exit' }); } catch(e) {}
     }
@@ -89,17 +89,25 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
   });
 
   botProcesses.set(botId, botProcess);
-  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started with camera on port ${viewerPort}`);
+  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started.`);
   return { process: botProcess, logs };
 }
 
 function stopBot(botId) {
   const p = botProcesses.get(botId);
   if (p) {
+    console.log(`[Bot ${botId}] طلب إيقاف فوري...`);
     if (p.connected) {
       try { p.send({ type: 'force_exit' }); } catch(e) {}
     }
-    killProcessGracefully(p, botId);
+    // إنهاء قسري بعد 50 مللي ثانية كحد أقصى
+    setTimeout(() => {
+      if (botProcesses.has(botId)) {
+        try { process.kill(p.pid, 'SIGKILL'); } catch(e) {}
+        botProcesses.delete(botId);
+      }
+    }, 50);
+    // لا ننتظر، نحذف من الخريطة فوراً
     botProcesses.delete(botId);
     return true;
   }
