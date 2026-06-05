@@ -157,8 +157,14 @@ function attackNearest() {
 
 function closeViewer() {
   if (viewerServer) {
-    viewerServer.close(() => log(`🛑 خادم الكاميرا مغلق`));
-    viewerServer = null;
+    try {
+      viewerServer.close(() => {
+        log(`🛑 خادم الكاميرا مغلق`);
+      });
+      viewerServer = null;
+    } catch(e) {
+      log(`⚠️ خطأ أثناء إغلاق الكاميرا: ${e.message}`);
+    }
   }
   viewerStarted = false;
 }
@@ -166,12 +172,27 @@ function closeViewer() {
 async function startViewer() {
   try {
     const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
+    
+    // تأكد من إغلاق أي خادم سابق
+    closeViewer();
+    // انتظر قليلاً لتحرير المنفذ
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
     const http = require('http');
     const express = require('express');
     const app = express();
     const server = http.createServer(app);
     viewerServer = server;
+    
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        log(`⚠️ المنفذ ${viewerPort} مشغول، سيتم إعادة المحاولة بعد 2 ثانية`);
+        setTimeout(() => startViewer(), 2000);
+      } else {
+        log(`⚠️ خطأ في خادم الكاميرا: ${err.message}`);
+      }
+    });
     
     server.listen(viewerPort, () => {
       log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
@@ -324,7 +345,7 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    closeViewer();
+    closeViewer();  // إغلاق الكاميرا قبل إعادة التشغيل
     log(`🔄 سيتم إعادة تشغيل البوت بعد 3 ثوانٍ...`);
     setTimeout(() => {
       createBot();
