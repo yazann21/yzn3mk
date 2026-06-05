@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - إنشاء متكامل بدون زر تحقق منفصل
+// BOT CRAFT v6.0 - كامل مع إصلاح نافذة التحقق
 // ========================================
 
 let currentUser = null;
@@ -257,7 +257,7 @@ function renderBots() {
     }).join('');
 }
 
-// ========== معالج إنشاء البوت ==========
+// ========== إنشاء بوت جديد مع معالجة المصادقة ==========
 document.getElementById('createBotForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const botName = document.getElementById('createBotName').value;
@@ -266,56 +266,73 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
     const version = document.getElementById('createVersion').value;
     const authType = document.querySelector('input[name="authType"]:checked').value;
     
-    const response = await fetch('/api/create-bot-cloud', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ botName, botType, serverIp, teamNames: '', version, authType })
-    });
-    const data = await response.json();
-    if (data.error) {
-        alert('خطأ: ' + data.error);
-        return;
-    }
-    if (data.need_verification) {
-        // بدء عملية المصادقة للحساب الحقيقي
-        alert('جاري بدء مصادقة مايكروسوفت... ستظهر نافذة منبثقة بالرابط والرمز.');
-        const verifyResponse = await fetch(`/api/start-verification/${data.botId}`, { credentials: 'include' });
-        const verifyData = await verifyResponse.json();
-        if (verifyData.need_verification) {
-            alert(`🔐 مصادقة حساب مايكروسوفت:\n\n🔗 الرابط: ${verifyData.verification_uri}\n🔢 الرمز: ${verifyData.user_code}\n\n⚠️ افتح الرابط في نافذة خاصة (Incognito)، سجل دخولك بحساب ماينكرافت، وأدخل الرمز.\n\nبعد إتمام المصادقة، سيدخل البوت تلقائياً.`);
-            // مراقبة حالة البوت حتى يدخل
-            const interval = setInterval(async () => {
-                const botsRes = await fetch('/api/bots', { credentials: 'include' });
-                const botsData = await botsRes.json();
-                const updatedBot = botsData.bots.find(b => b.id == data.botId);
-                if (updatedBot && updatedBot.status === 'online') {
-                    clearInterval(interval);
-                    alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
-                    navigateTo('bots');
-                    loadBots();
-                } else if (updatedBot && updatedBot.mc_token) {
-                    clearInterval(interval);
-                    alert(`✅ تم التحقق من الحساب! يمكنك الآن تشغيل البوت يدوياً.`);
-                    navigateTo('bots');
-                    loadBots();
-                }
-            }, 3000);
-        } else if (verifyData.success && verifyData.auto_started) {
-            alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
+    // تعطيل الزر مؤقتاً لمنع التكرار
+    const submitBtn = document.querySelector('#createBotForm button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> جاري الإنشاء...';
+    
+    try {
+        const response = await fetch('/api/create-bot-cloud', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ botName, botType, serverIp, teamNames: '', version, authType })
+        });
+        const data = await response.json();
+        if (data.error) {
+            alert('❌ خطأ: ' + data.error);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+            return;
+        }
+        if (data.need_verification) {
+            // بدء عملية المصادقة للحساب الحقيقي
+            alert('🔐 جاري بدء مصادقة مايكروسوفت... ستصلك نافذة منبثقة بالرابط والرمز.');
+            const verifyResponse = await fetch(`/api/start-verification/${data.botId}`, { credentials: 'include' });
+            const verifyData = await verifyResponse.json();
+            if (verifyData.need_verification) {
+                // ✅ هنا نعرض الرابط والرمز في نافذة منبثقة
+                alert(`🔐 مصادقة حساب مايكروسوفت:\n\n🔗 الرابط: ${verifyData.verification_uri}\n🔢 الرمز: ${verifyData.user_code}\n\n⚠️ تنبيه:\n- افتح الرابط في نافذة خاصة (Incognito)\n- سجل دخولك بحساب مايكروسوفت الذي يملك Minecraft Java Edition\n- أدخل الرمز خلال ${verifyData.expires_in} ثانية\n\nبعد إتمام المصادقة، سيدخل البوت تلقائياً.`);
+                // مراقبة حالة البوت حتى يدخل
+                const interval = setInterval(async () => {
+                    const botsRes = await fetch('/api/bots', { credentials: 'include' });
+                    const botsData = await botsRes.json();
+                    const updatedBot = botsData.bots.find(b => b.id == data.botId);
+                    if (updatedBot && updatedBot.status === 'online') {
+                        clearInterval(interval);
+                        alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
+                        navigateTo('bots');
+                        loadBots();
+                    } else if (updatedBot && updatedBot.mc_token) {
+                        clearInterval(interval);
+                        alert(`✅ تم التحقق من الحساب! يمكنك الآن تشغيل البوت يدوياً.`);
+                        navigateTo('bots');
+                        loadBots();
+                    }
+                }, 3000);
+            } else if (verifyData.success && verifyData.auto_started) {
+                alert(`✅ تم التحقق وتشغيل البوت بنجاح!`);
+                navigateTo('bots');
+                loadBots();
+            } else {
+                alert('❌ فشل بدء المصادقة: ' + (verifyData.error || 'خطأ غير معروف'));
+            }
+        } else if (data.auto_started) {
+            alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
             navigateTo('bots');
             loadBots();
         } else {
-            alert('❌ فشل بدء المصادقة: ' + (verifyData.error || 'خطأ'));
+            alert(`✅ تم إنشاء البوت بنجاح! يمكنك تشغيله من لوحة البوتات.`);
+            navigateTo('bots');
+            loadBots();
         }
-    } else if (data.auto_started) {
-        alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
-        navigateTo('bots');
-        loadBots();
-    } else {
-        alert(`✅ تم إنشاء البوت بنجاح!`);
-        navigateTo('bots');
-        loadBots();
+    } catch (err) {
+        console.error('Error creating bot:', err);
+        alert('❌ حدث خطأ أثناء إنشاء البوت: ' + err.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
     }
 });
 
