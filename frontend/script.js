@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - مع زر تحقق يعمل
+// BOT CRAFT v4.0 - النسخة النهائية (بدون تحقق)
 // ========================================
 
 let currentUser = null;
@@ -61,6 +61,17 @@ function initAuth() {
                 showApp();
                 loadDashboard();
                 loadBots();
+                // عرض حالة حساب ماينكرافت
+                const mcStatus = document.getElementById('mcAccountStatus');
+                if (mcStatus) {
+                    if (user.hasMinecraft) {
+                        mcStatus.innerHTML = `✅ حساب ماينكرافت: ${user.minecraftUsername || 'مرتبط'}`;
+                        mcStatus.style.color = '#22c55e';
+                    } else {
+                        mcStatus.innerHTML = '⚠️ لم يتم العثور على حساب ماينكرافت. تأكد من أن حساب مايكروسوفت يملك Minecraft Java Edition.';
+                        mcStatus.style.color = '#f59e0b';
+                    }
+                }
             } else {
                 showLogin();
             }
@@ -309,7 +320,6 @@ function renderBots() {
                        <button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
                     : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`
                 }
-                <button class="btn-verify" onclick="verifyBotAccount(${b.id})"><i class="fas fa-check-double"></i> تحقق</button>
                 <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
                 <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
                 <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
@@ -317,28 +327,6 @@ function renderBots() {
             </div>
         </div>
     `).join('');
-}
-
-// ========== دالة التحقق من البوت (تعرض الرابط والرمز في نافذة منبثقة) ==========
-function verifyBotAccount(botId) {
-    console.log('verifyBotAccount called for bot:', botId);
-    fetch(`/api/bot-verify/${botId}`, { credentials: 'include' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.verification_uri && data.user_code) {
-                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.`);
-            } else if (data.message) {
-                alert(data.message);
-            } else if (data.error) {
-                alert('خطأ: ' + data.error);
-            } else {
-                alert('تم بدء عملية التحقق. افتح سجل Render وابحث عن الرابط والرمز.');
-            }
-        })
-        .catch(err => {
-            console.error('Fetch error:', err);
-            alert('حدث خطأ أثناء محاولة التحقق: ' + err.message);
-        });
 }
 
 function startBot(id) {
@@ -349,7 +337,7 @@ function startBot(id) {
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
         if (data.error === 'need_minecraft_auth') {
-            alert('⚠️ يجب التحقق من البوت أولاً (اضغط زر تحقق)');
+            alert('⚠️ لم يتم العثور على حساب ماينكرافت مرتبط بحساب مايكروسوفت الخاص بك. تأكد من أن حسابك يملك Minecraft Java Edition.');
         } else {
             loadBots();
             loadDashboard();
@@ -672,4 +660,3 @@ window.refreshLogs = refreshLogs;
 window.clearLogs = clearLogs;
 window.openCameraViewer = openCameraViewer;
 window.navigateTo = navigateTo;
-window.verifyBotAccount = verifyBotAccount;
