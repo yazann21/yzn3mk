@@ -111,12 +111,11 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // ✅ استخدام نفس الإعدادات التي اشتغلت على الجهاز المحلي
         const userIdentifier = `bot_${botId}_${Date.now()}`;
         const flow = new Authflow(userIdentifier, './ms-cache', {
             authTitle: Titles.MinecraftJava,
             deviceType: 'Win32',
-            flow: 'sisu',   // 🔑 المفتاح الأساسي لحل المشكلة
+            flow: 'sisu',
             onMsaCode: (data) => {
                 console.log(`\n🔐 مصادقة البوت ${botId}:`);
                 console.log(`🔗 الرابط: ${data.verification_uri}`);
@@ -135,7 +134,8 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
             }
         });
         
-        const tokenResult = await flow.getMinecraftJavaToken();
+        // ✅ التعديل الجوهري هنا
+        const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
         
         if (tokenResult && tokenResult.token) {
             db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
