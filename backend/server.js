@@ -9,30 +9,47 @@ const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
 const { Authflow, Titles } = require('prismarine-auth');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.set('trust proxy', 1);
-app.use(cors({
-    origin: 'https://yzn3mk.onrender.com',
-    credentials: true
-}));
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-app.use(session({
-    store: new SQLiteStore({ db: 'sessions.db', table: 'sessions' }),
-    secret: process.env.SESSION_SECRET || 'super_secret_key',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: true,
-        httpOnly: true,
-        sameSite: 'none',
-        maxAge: 1000 * 60 * 60 * 24 * 7
+app.get('/api/bot-verify/:botId', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const botId = parseInt(req.params.botId);
+    
+    try {
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            // ✅ استخدم المعرف المعتمد من مايكروسوفت، وليس Client ID الخاص بك
+            authTitle: Titles.MinecraftJava,
+            deviceType: 'Win32',
+            flow: 'live',  // تدفق مباشر بدون Azure AD
+            onMsaCode: (data) => {
+                console.log(`\n🔐 رابط المصادقة: ${data.verification_uri}`);
+                console.log(`🔢 الرمز: ${data.user_code}`);
+                // إرسال الرابط والرمز للواجهة الأمامية
+                if (!res.headersSent) {
+                    res.json({
+                        need_verification: true,
+                        verification_uri: data.verification_uri,
+                        user_code: data.user_code,
+                        expires_in: data.expires_in
+                    });
+                }
+            }
+        });
+        
+        const tokenResult = await flow.getMinecraftJavaToken();
+        
+        if (tokenResult && tokenResult.token) {
+            db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId]);
+            console.log(`✅ Bot ${botId} تم التحقق منه بنجاح`);
+            if (!res.headersSent) {
+                res.json({ success: true, message: '✅ تم التحقق من البوت بنجاح!' });
+            }
+        }
+    } catch (error) {
+        console.error(`❌ فشل التحقق للبوت ${botId}:`, error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'فشل التحقق: ' + error.message });
+        }
     }
-}));
-
+});
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
