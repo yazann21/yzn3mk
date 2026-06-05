@@ -38,7 +38,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== مصادقة المستخدم (تسجيل الدخول) ==========
+// ========== مصادقة المستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -94,7 +94,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مصادقة البوت (باستخدام معرف Xbox العام وتدفق live) ==========
+// ========== مصادقة البوت (باستخدام تطبيق Azure الخاص مع client_secret) ==========
 const { Authflow, Titles } = require('prismarine-auth');
 const pendingFlows = new Map();
 
@@ -110,11 +110,11 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-        // استخدام معرف Xbox العام وتدفق live (بدلاً من msal)
+        // استخدام معرف العميل الخاص بك (من .env) مع تدفق msal
         const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
-            authTitle: '000000004C20A968',  // معرف تطبيق Xbox العام
+            authTitle: process.env.CLIENT_ID,
             deviceType: 'Win32',
-            flow: 'live',  // التدفق المناسب للمعرفات العامة
+            flow: 'msal',
             onMsaCode: (data) => {
                 console.log(`\n🔐 مصادقة البوت ${botId}:`);
                 console.log(`🔗 الرابط: ${data.verification_uri}`);
@@ -124,25 +124,21 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
         });
         pendingFlows.set(botId, flow);
 
-        // انتظار الحصول على الرابط والرمز
         const deviceData = await new Promise((resolve) => {
             const originalOnMsaCode = flow['_onMsaCode'];
             flow['_onMsaCode'] = (data) => {
                 resolve(data);
                 if (originalOnMsaCode) originalOnMsaCode(data);
             };
-            // بدء العملية
             flow.getMinecraftJavaToken().catch(err => console.error('Token error:', err));
         });
 
-        // إرجاع الرابط والرمز للمستخدم
         res.json({
             verification_uri: deviceData.verification_uri,
             user_code: deviceData.user_code,
             message: 'افتح الرابط وأدخل الرمز باستخدام حساب ماينكرافت الحقيقي'
         });
 
-        // متابعة العملية في الخلفية للحصول على التوكن وحفظه
         flow.getMinecraftJavaToken()
             .then(tokenResult => {
                 if (tokenResult && tokenResult.token) {
@@ -160,7 +156,7 @@ app.get('/api/bot-verify/:botId', async (req, res) => {
     }
 });
 
-// تشغيل البوت باستخدام التوكن المخزن
+// تشغيل البوت
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -176,7 +172,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ========== باقي المسارات ==========
+// باقي المسارات (stop, delete, update, logs, stats, inventory, command, restart, clear-logs, tasks, camera) كما هي
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
