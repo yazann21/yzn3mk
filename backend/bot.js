@@ -156,7 +156,6 @@ function attackNearest() {
   }
 }
 
-// إدارة خادم الكاميرا (إغلاق آمن)
 async function closeViewer() {
   if (viewerServer) {
     return new Promise((resolve) => {
@@ -184,13 +183,49 @@ async function startViewer() {
   if (viewerStarted) return;
   try {
     await closeViewer();
-    const desiredPort = 0; // منفذ ديناميكي (يختار النظام منفذاً حراً)
+    const desiredPort = 0; // منفذ ديناميكي
+    
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
     const http = require('http');
     const express = require('express');
     const app = express();
     const server = http.createServer(app);
     viewerServer = server;
+
+    // صفحة رئيسية بديلة تحاول إعادة التوجيه إلى المسار الصحيح للكاميرا
+    app.get('/', (req, res) => {
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>كاميرا البوت</title><style>body{margin:0;background:#0a0a1a;color:white;font-family:sans-serif;}</style></head>
+        <body>
+          <h3 style="text-align:center;padding:10px;">📷 جاري تحميل كاميرا البوت...</h3>
+          <script>
+            const pathsToTry = ['/view', '/index.html', '/viewer', '/'];
+            let index = 0;
+            function tryNext() {
+              if (index >= pathsToTry.length) {
+                document.body.innerHTML = '<h3 style="color:red;text-align:center;">⚠️ فشل تحميل الكاميرا. الرجاء استخدام رابط ngrok المباشر من سجلات البوت.</h3><p style="text-align:center;">يمكنك نسخ الرابط من سجلات البوت (زر "سجلات") ولصقه في المتصفح مباشرة.</p>';
+                return;
+              }
+              const iframe = document.createElement('iframe');
+              iframe.src = pathsToTry[index];
+              iframe.style.width = '100%';
+              iframe.style.height = '90vh';
+              iframe.style.border = 'none';
+              iframe.onload = () => {
+                document.body.innerHTML = '';
+                document.body.appendChild(iframe);
+              };
+              iframe.onerror = () => { index++; tryNext(); };
+              document.body.appendChild(iframe);
+            }
+            tryNext();
+          </script>
+        </body>
+        </html>
+      `);
+    });
 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
@@ -321,7 +356,6 @@ async function createBot() {
       }
     }, 1000);
     
-    // إعادة تشغيل الكاميرا (تأكد من عدم وجود تعارض)
     if (!viewerStarted) await startViewer();
     
     if (config.botType === 'afk') {
@@ -365,7 +399,7 @@ async function createBot() {
   bot.on('end', async (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    await closeViewer();  // تحرير المنفذ عند الانقطاع
+    await closeViewer();
     if (isDisconnecting) {
       process.exit(0);
     }
@@ -374,7 +408,6 @@ async function createBot() {
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-// معالجة أوامر قطع الاتصال النظيف
 process.on('message', async (msg) => {
   if (msg && msg.type === 'disconnect') {
     log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
