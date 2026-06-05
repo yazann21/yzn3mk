@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v5.0 - النسخة النهائية (زر تحقق منفصل وتشغيل تلقائي)
+// BOT CRAFT v5.0 - النسخة النهائية الكاملة
 // ========================================
 
 let currentUser = null;
@@ -227,58 +227,61 @@ function renderBots() {
         container.innerHTML = '<div class="activity-skeleton">🤖 لا توجد بوتات</div>';
         return;
     }
-    container.innerHTML = filtered.map(b => `
-        <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
-            <div class="bot-header">
-                <div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div>
-                <div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div>
+    container.innerHTML = filtered.map(b => {
+        const isVerified = b.mc_token && b.mc_token !== '';
+        return `
+            <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
+                <div class="bot-header">
+                    <div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div>
+                    <div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div>
+                </div>
+                <div class="bot-details">
+                    <div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div>
+                    <div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div>
+                    <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
+                    <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
+                    ${isVerified ? `<div><i class="fas fa-check-circle" style="color:#22c55e"></i> ✓ مرتبط بحساب ${escapeHtml(b.mc_username || 'حقيقي')}</div>` : '<div><i class="fas fa-user-secret"></i> وضع غير مسجل (غير محقق)</div>'}
+                </div>
+                <div class="bot-actions" onclick="event.stopPropagation()">
+                    ${!isVerified ? `<button class="btn-verify" onclick="verifyBot(${b.id})"><i class="fas fa-key"></i> تحقق</button>` : ''}
+                    ${b.status === 'online' 
+                        ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button>
+                           <button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
+                        : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`
+                    }
+                    <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
+                    <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
+                    <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
+                    <button class="btn-delete" onclick="deleteBot(${b.id})"><i class="fas fa-trash"></i> حذف</button>
+                </div>
             </div>
-            <div class="bot-details">
-                <div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div>
-                <div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div>
-                <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
-                <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
-                ${b.mc_username ? `<div><i class="fas fa-user-check"></i> الحساب: ${escapeHtml(b.mc_username)}</div>` : '<div><i class="fas fa-user-secret"></i> وضع غير مسجل</div>'}
-            </div>
-            <div class="bot-actions" onclick="event.stopPropagation()">
-                <button class="btn-verify" onclick="verifyBot(${b.id})"><i class="fas fa-key"></i> تحقق</button>
-                ${b.status === 'online' 
-                    ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button>
-                       <button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
-                    : `<button class="btn-start" onclick="startBot(${b.id})"><i class="fas fa-play"></i> تشغيل</button>`
-                }
-                <button class="btn-camera" onclick="openCameraViewer(${b.id})"><i class="fas fa-video"></i> كاميرا</button>
-                <button class="btn-logs" onclick="openLogs(${b.id})"><i class="fas fa-terminal"></i> سجلات</button>
-                <button class="btn-edit" onclick="openEditModal(${b.id})"><i class="fas fa-pen"></i> تعديل</button>
-                <button class="btn-delete" onclick="deleteBot(${b.id})"><i class="fas fa-trash"></i> حذف</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
-// ========== دالة التحقق المنفصلة (تظهر الرابط والرمز) ==========
+// ========== دالة التحقق (تختفي بعد النجاح) ==========
 function verifyBot(id) {
     fetch(`/api/bot-verify/${id}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
             if (data.need_verification) {
-                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\n⚠️ تنبيه:\n- افتح الرابط في نافذة تصفح خاص (Incognito)\n- سجل دخولك بحساب مايكروسوفت الذي يملك Minecraft\n- أدخل الرمز خلال دقيقة\n\nبعد إتمام المصادقة، سيرتبط الحساب بهذا البوت تلقائياً.`);
-                // بعد دقيقة نتحقق من نجاح المصادقة
-                setTimeout(() => {
+                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\n⚠️ تنبيه:\n- افتح الرابط في نافذة تصفح خاص (Incognito)\n- سجل دخولك بحساب مايكروسوفت الذي يملك Minecraft\n- أدخل الرمز خلال دقيقة\n\nبعد إتمام المصادقة، سيختفي زر "تحقق" ويرتبط الحساب.`);
+                
+                // التحقق كل 5 ثوانٍ من نجاح الربط
+                const interval = setInterval(() => {
                     fetch(`/api/bots`, { credentials: 'include' })
                         .then(res => res.json())
                         .then(botsData => {
                             const updatedBot = botsData.bots.find(b => b.id == id);
-                            if (updatedBot && updatedBot.mc_username) {
-                                alert(`✅ تم التحقق بنجاح! البوت الآن مرتبط بحساب ${updatedBot.mc_username}`);
-                                loadBots();
-                            } else {
-                                alert('⏳ لم يتم التحقق بعد. تأكد من إدخال الرمز في المتصفح.');
+                            if (updatedBot && updatedBot.mc_token && updatedBot.mc_token !== '') {
+                                clearInterval(interval);
+                                alert(`✅ تم التحقق بنجاح! البوت الآن مرتبط بحساب ${updatedBot.mc_username || 'الحقيقي'}`);
+                                loadBots(); // إعادة تحميل البوتات لإخفاء الزر
                             }
                         });
-                }, 70000);
+                }, 5000);
             } else if (data.success) {
-                alert(`✅ تم التحقق بنجاح! الحساب: ${data.username}`);
+                alert(`✅ تم التحقق بنجاح!`);
                 loadBots();
             } else {
                 alert('❌ فشل بدء عملية التحقق: ' + (data.error || 'خطأ'));
@@ -290,7 +293,6 @@ function verifyBot(id) {
         });
 }
 
-// ========== دالة التشغيل (تدخل بدون تحقق إذا لم يكن هناك حساب) ==========
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
         method: 'POST',

@@ -39,7 +39,7 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, mc_username TEXT, mc_profile_id TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== مصادقة المستخدم (مايكروسوفت لتسجيل الدخول) ==========
+// ========== مصادقة المستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -95,7 +95,7 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== مسار التحقق من البوت (يظهر الرابط والرمز ويعيد الحالة) ==========
+// ========== مسار التحقق من البوت (flow: 'sisu') ==========
 const pendingFlows = new Map();
 
 app.get('/api/bot-verify/:botId', async (req, res) => {
@@ -178,27 +178,24 @@ app.post('/api/complete-auth', async (req, res) => {
     }
 });
 
-// ========== تشغيل البوت (إذا كان mc_token موجود يستخدم الحساب الحقيقي وإلا يستخدم الوضع غير المسجل) ==========
+// ========== تشغيل البوت (يدعم الوضعين) ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         
-        // إذا كان البوت قيد التشغيل بالفعل
         if (botProcesses.has(botId)) return res.json({ success: true, alreadyRunning: true });
         
         let mcToken = bot.mc_token;
         let mcUsername = bot.mc_username;
         let mcProfileId = bot.mc_profile_id;
         
-        // إذا كان هناك توكن (حساب حقيقي) استخدمه
         if (mcToken && mcToken !== '' && mcProfileId) {
             startBot(botId, bot.bot_name, mcToken, mcUsername, mcProfileId, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
             db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
             res.json({ success: true, mode: 'microsoft' });
         } else {
-            // وضع غير مسجل (offline) – يدخل بالاسم الذي اختاره المستخدم
             startBot(botId, bot.bot_name, null, bot.bot_name, null, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
             db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
             res.json({ success: true, mode: 'offline' });
@@ -280,7 +277,6 @@ app.post('/api/clear-logs/:botId', (req, res) => {
     res.json({ success: true });
 });
 
-// كاميرا المراقبة (تعمل على المنفذ 8080+id)
 app.get('/camera/:botId', (req, res) => {
     const port = 8080 + parseInt(req.params.botId);
     res.send(`
