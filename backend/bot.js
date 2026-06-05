@@ -8,7 +8,6 @@ const axios = require('axios');
 let bot = null;
 let logFile = null;
 let viewerStarted = false;
-let viewerServer = null;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -156,104 +155,27 @@ function attackNearest() {
   }
 }
 
-async function closeViewer() {
-  if (viewerServer) {
-    return new Promise((resolve) => {
-      viewerServer.close(() => {
-        log(`🛑 خادم الكاميرا مغلق`);
-        viewerServer = null;
-        viewerStarted = false;
-        resolve();
-      });
-      setTimeout(() => {
-        if (viewerServer) {
-          try { viewerServer.closeAllConnections?.(); } catch(e) {}
-          viewerServer = null;
-          viewerStarted = false;
-          resolve();
-        }
-      }, 500);
-    });
-  }
-  viewerStarted = false;
-  return Promise.resolve();
-}
-
 async function startViewer() {
   if (viewerStarted) return;
   try {
-    await closeViewer();
-    const desiredPort = 0; // منفذ ديناميكي
-    
+    const viewerPort = 8080 + parseInt(config.botId);
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    const http = require('http');
-    const express = require('express');
-    const app = express();
-    const server = http.createServer(app);
-    viewerServer = server;
-
-    // صفحة رئيسية بديلة تحاول إعادة التوجيه إلى المسار الصحيح للكاميرا
-    app.get('/', (req, res) => {
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head><title>كاميرا البوت</title><style>body{margin:0;background:#0a0a1a;color:white;font-family:sans-serif;}</style></head>
-        <body>
-          <h3 style="text-align:center;padding:10px;">📷 جاري تحميل كاميرا البوت...</h3>
-          <script>
-            const pathsToTry = ['/view', '/index.html', '/viewer', '/'];
-            let index = 0;
-            function tryNext() {
-              if (index >= pathsToTry.length) {
-                document.body.innerHTML = '<h3 style="color:red;text-align:center;">⚠️ فشل تحميل الكاميرا. الرجاء استخدام رابط ngrok المباشر من سجلات البوت.</h3><p style="text-align:center;">يمكنك نسخ الرابط من سجلات البوت (زر "سجلات") ولصقه في المتصفح مباشرة.</p>';
-                return;
-              }
-              const iframe = document.createElement('iframe');
-              iframe.src = pathsToTry[index];
-              iframe.style.width = '100%';
-              iframe.style.height = '90vh';
-              iframe.style.border = 'none';
-              iframe.onload = () => {
-                document.body.innerHTML = '';
-                document.body.appendChild(iframe);
-              };
-              iframe.onerror = () => { index++; tryNext(); };
-              document.body.appendChild(iframe);
-            }
-            tryNext();
-          </script>
-        </body>
-        </html>
-      `);
-    });
-
-    server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        log(`⚠️ منفذ الكاميرا مشغول، إعادة محاولة بعد ثانية...`);
-        setTimeout(() => startViewer(), 1000);
-      } else {
-        log(`⚠️ خطأ في خادم الكاميرا: ${err.message}`);
-      }
-    });
-
-    server.listen(desiredPort, () => {
-      const actualPort = server.address().port;
-      log(`🎥 كاميرا محلية على المنفذ ${actualPort}`);
-      if (process.env.NGROK_AUTHTOKEN) {
-        (async () => {
-          const ngrok = require('@ngrok/ngrok');
-          await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-          const url = await ngrok.forward({ addr: actualPort, authtoken_from_env: true });
-          log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
-          if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
-        })().catch(e => log(`⚠️ ngrok error: ${e.message}`));
-      } else {
-        log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
-      }
-    });
-
-    mineflayerViewer(bot, { port: desiredPort, firstPerson: false, viewDistance: 6, server });
+    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
     viewerStarted = true;
+    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+
+    if (process.env.NGROK_AUTHTOKEN) {
+      const ngrok = require('ngrok');
+      const url = await ngrok.connect({
+        authtoken: process.env.NGROK_AUTHTOKEN,
+        addr: viewerPort,
+        region: 'eu'
+      });
+      log(`🌍 كاميرا عامة عبر ngrok: ${url}`);
+      if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url}` });
+    } else {
+      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+    }
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }
@@ -396,10 +318,10 @@ async function createBot() {
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
   
-  bot.on('end', async (reason) => {
+  bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    await closeViewer();
+    viewerStarted = false;
     if (isDisconnecting) {
       process.exit(0);
     }
@@ -408,45 +330,38 @@ async function createBot() {
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-process.on('message', async (msg) => {
+process.on('message', (msg) => {
   if (msg && msg.type === 'disconnect') {
     log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
     if (bot && !isDisconnecting) {
       isDisconnecting = true;
       bot.end();
-      await closeViewer();
       setTimeout(() => process.exit(0), 500);
     } else {
-      await closeViewer();
       process.exit(0);
     }
   } else if (msg && msg.type === 'force_exit') {
     log(`📢 أمر إنهاء فوري (غير نظيف).`);
-    await closeViewer();
     process.exit(0);
   }
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   if (bot && !isDisconnecting) {
     isDisconnecting = true;
     bot.end();
-    await closeViewer();
     setTimeout(() => process.exit(0), 500);
   } else {
-    await closeViewer();
     process.exit(0);
   }
 });
 
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
   if (bot && !isDisconnecting) {
     isDisconnecting = true;
     bot.end();
-    await closeViewer();
     setTimeout(() => process.exit(0), 500);
   } else {
-    await closeViewer();
     process.exit(0);
   }
 });
