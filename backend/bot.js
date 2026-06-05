@@ -2,6 +2,8 @@ const mineflayer = require('mineflayer');
 const { pathfinder } = require('mineflayer-pathfinder');
 const fs = require('fs');
 const path = require('path');
+const { Authflow, Titles } = require('prismarine-auth');
+const axios = require('axios');
 
 let bot = null;
 let logFile = null;
@@ -152,7 +154,83 @@ function attackNearest() {
   }
 }
 
-function createBot() {
+async function startViewer() {
+  try {
+    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
+    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
+    viewerStarted = true;
+    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+
+    if (process.env.NGROK_AUTHTOKEN) {
+      const ngrok = require('@ngrok/ngrok');
+      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+      const url = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
+      log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
+      if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
+    } else {
+      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+    }
+  } catch (err) {
+    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
+  }
+}
+
+async function authenticateBot() {
+  log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
+  const userIdentifier = `bot_${config.botId}_${Date.now()}`;
+  const flow = new Authflow(userIdentifier, './ms-cache', {
+    authTitle: Titles.MinecraftJava,
+    deviceType: 'Win32',
+    flow: 'sisu',
+    onMsaCode: (data) => {
+      log(`🔗 رابط المصادقة: ${data.verification_uri}`);
+      log(`🔢 الرمز: ${data.user_code}`);
+      log(`⏱️ الرمز صالح لمدة ${data.expires_in} ثانية`);
+      log(`📌 الرجاء فتح الرابط في متصفح (يفضل نافذة خاصة) وإدخال الرمز`);
+    }
+  });
+  const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
+  if (tokenResult && tokenResult.token && tokenResult.profile) {
+    log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
+    // إرسال التوكن إلى الخادم لحفظه في قاعدة البيانات
+    const apiUrl = process.env.API_URL || 'http://localhost:3000';
+    try {
+      await axios.post(`${apiUrl}/api/save-bot-token`, {
+        botId: config.botId,
+        mcToken: tokenResult.token,
+        mcUsername: tokenResult.profile.name,
+        mcProfileId: tokenResult.profile.id
+      });
+      log(`💾 تم حفظ التوكن في قاعدة البيانات`);
+      return tokenResult;
+    } catch (err) {
+      log(`❌ فشل حفظ التوكن على الخادم: ${err.message}`);
+      throw err;
+    }
+  } else {
+    throw new Error('فشل الحصول على التوكن');
+  }
+}
+
+async function createBot() {
+  const authType = process.env.AUTH_TYPE || 'offline';
+  
+  // إذا كان البوت من نوع "مايكروسوفت حقيقي" ولا يوجد توكن مخزن، نطلب المصادقة أولاً
+  if (authType === 'microsoft' && (!config.minecraftToken || config.minecraftToken === '')) {
+    log(`⚠️ البوت من نوع "حساب حقيقي" لكن لا يوجد توكن مخزن. سيتم بدء المصادقة...`);
+    try {
+      const tokenData = await authenticateBot();
+      config.minecraftToken = tokenData.token;
+      config.username = tokenData.profile.name;
+      config.profileId = tokenData.profile.id;
+    } catch (err) {
+      log(`❌ فشل المصادقة: ${err.message}`);
+      log(`❌ لن يتم تشغيل البوت بدون توكن صالح.`);
+      process.exit(1); // إنهاء العملية وعدم الدخول أبداً
+    }
+  }
+
   log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}] باسم ${config.username} (${config.minecraftToken ? 'حساب حقيقي' : 'وضع غير مسجل'})`);
   
   const authConfig = {
@@ -166,7 +244,6 @@ function createBot() {
     viewDistance: 'tiny'
   };
   
-  // إذا كان هناك توكن حقيقي، استخدم وضع microsoft مع الجلسة
   if (config.minecraftToken && config.minecraftToken !== '' && config.profileId) {
     authConfig.auth = 'microsoft';
     authConfig.session = {
@@ -182,7 +259,7 @@ function createBot() {
 
   bot.on('login', () => log(`✅ دخل البوت بنجاح باسم ${bot.username}`));
   
-  bot.on('spawn', () => {
+  bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
     setTimeout(() => equipEverythingFast(), 500);
     setInterval(() => equipEverythingFast(), 1000);
@@ -195,15 +272,7 @@ function createBot() {
       }
     }, 1000);
     
-    // تشغيل الكاميرا
-    if (!viewerStarted) {
-      try { 
-        const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
-        require('prismarine-viewer').mineflayer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 }); 
-        viewerStarted = true; 
-        log(`🎥 كاميرا تعمل على المنفذ ${viewerPort}`);
-      } catch (err) { log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`); }
-    }
+    if (!viewerStarted) await startViewer();
     
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
