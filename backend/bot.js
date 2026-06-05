@@ -189,6 +189,13 @@ async function authenticateBot() {
   }
 }
 
+function cleanup() {
+  if (combatInterval) clearInterval(combatInterval);
+  if (huntInterval) clearInterval(huntInterval);
+  combatInterval = huntInterval = null;
+  currentTarget = null;
+}
+
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
   
@@ -218,12 +225,12 @@ async function createBot() {
       accessToken: config.minecraftToken,
       selectedProfile: { id: config.profileId, name: config.username }
     } : undefined,
-    connectTimeout: 300,           // ⚡ 0.3 ثانية فقط للاتصال
-    checkTimeoutInterval: 0,       // ⚡ لا تفحص انقطاع الاتصال
-    keepAlive: false,              // ⚡ تعطيل keepAlive (قد يزيد السرعة)
+    connectTimeout: 5000,          // 5 ثوانٍ للسيرفرات البطيئة (لتجنب الانقطاع المبكر)
+    checkTimeoutInterval: 0,
+    keepAlive: true,
     viewDistance: 'tiny',
     skipValidation: true,
-    reconnect: false
+    // reconnect: true (افتراضي) – أسرع آلية لإعادة الاتصال
   };
   
   bot = mineflayer.createBot(authConfig);
@@ -231,10 +238,9 @@ async function createBot() {
 
   bot.on('login', () => log(`✅ دخل البوت بنجاح باسم ${bot.username}`));
   
-  bot.on('spawn', async () => {
+  bot.on('spawn', () => {
     log(`📍 ظهر البوت في العالم`);
-    // تجهيز الدروع بسرعة
-    setTimeout(() => equipEverythingFast(), 200);
+    setTimeout(() => equipEverythingFast(), 100);
     setInterval(() => equipEverythingFast(), 1000);
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
@@ -253,8 +259,8 @@ async function createBot() {
     } else if (config.botType === 'coward') {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
-          log(`😨 تعرض البوت للضرب! يتم الخروج فوراً.`);
-          process.exit(0);
+          log(`😨 تعرض البوت للضرب! يتم قطع الاتصال فوراً.`);
+          bot.end(); // فقط ننهي الاتصال، والمكتبة ستعيد الاتصال تلقائياً بسرعة
         }
       });
     }
@@ -280,20 +286,13 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    log(`🔄 إعادة تشغيل فورية...`);
-    createBot();   // ⚡ بدون تأخير
+    // لا نستدعي createBot() لأن reconnect سيتولى إعادة الاتصال تلقائياً وبسرعة
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
-function cleanup() {
-  if (combatInterval) clearInterval(combatInterval);
-  if (huntInterval) clearInterval(huntInterval);
-  combatInterval = huntInterval = null;
-  currentTarget = null;
-}
-
+// معالجة أوامر الإنهاء السريع من العملية الأب
 process.on('message', (msg) => {
   if (msg && msg.type === 'force_exit') {
     log(`📢 أمر إنهاء فوري من الخادم الرئيسي.`);
