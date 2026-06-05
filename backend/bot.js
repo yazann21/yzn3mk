@@ -15,6 +15,7 @@ let currentTarget = null;
 let teamList = [];
 let killCount = 0;
 let deathCount = 0;
+let isClosing = false; // منع تكرار إغلاق الكاميرا
 
 const args = process.argv.slice(2);
 const config = {
@@ -155,28 +156,42 @@ function attackNearest() {
   }
 }
 
-function closeViewer() {
+// إغلاق خادم الكاميرا بشكل آمن
+async function closeViewer() {
+  if (isClosing) return;
+  isClosing = true;
   if (viewerServer) {
-    try {
+    return new Promise((resolve) => {
       viewerServer.close(() => {
         log(`🛑 خادم الكاميرا مغلق`);
+        viewerServer = null;
+        isClosing = false;
+        resolve();
       });
-      viewerServer = null;
-    } catch(e) {
-      log(`⚠️ خطأ أثناء إغلاق الكاميرا: ${e.message}`);
-    }
+      // إغلاق قسري بعد 2 ثانية إذا لم يستجب
+      setTimeout(() => {
+        if (viewerServer) {
+          try { viewerServer.closeAllConnections?.(); viewerServer.emit('close'); } catch(e) {}
+          viewerServer = null;
+          isClosing = false;
+          resolve();
+        }
+      }, 2000);
+    });
   }
-  viewerStarted = false;
+  isClosing = false;
+  return Promise.resolve();
 }
 
 async function startViewer() {
+  if (viewerStarted) return;
   try {
     const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
     
-    // تأكد من إغلاق أي خادم سابق
-    closeViewer();
-    // انتظر قليلاً لتحرير المنفذ
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // إغلاق أي خادم سابق
+    await closeViewer();
+    // انتظار إضافي لتحرير النظام للمنفذ
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
     const http = require('http');
@@ -187,7 +202,7 @@ async function startViewer() {
     
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        log(`⚠️ المنفذ ${viewerPort} مشغول، سيتم إعادة المحاولة بعد 2 ثانية`);
+        log(`⚠️ المنفذ ${viewerPort} مشغول، إعادة محاولة بعد ثانيتين...`);
         setTimeout(() => startViewer(), 2000);
       } else {
         log(`⚠️ خطأ في خادم الكاميرا: ${err.message}`);
@@ -318,8 +333,7 @@ async function createBot() {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
           log(`😨 تعرض البوت للضرب! يتم الخروج فوراً.`);
-          closeViewer();
-          process.exit(0);
+          closeViewer().then(() => process.exit(0));
         }
       });
     }
@@ -342,10 +356,11 @@ async function createBot() {
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
   
-  bot.on('end', (reason) => {
+  bot.on('end', async (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    closeViewer();  // إغلاق الكاميرا قبل إعادة التشغيل
+    await closeViewer(); // انتظار إغلاق الكاميرا
+    viewerStarted = false;
     log(`🔄 سيتم إعادة تشغيل البوت بعد 3 ثوانٍ...`);
     setTimeout(() => {
       createBot();
@@ -362,26 +377,26 @@ function cleanup() {
   currentTarget = null;
 }
 
-process.on('message', (msg) => {
+process.on('message', async (msg) => {
   if (msg && msg.type === 'force_exit') {
     log(`📢 أمر إنهاء فوري من الخادم الرئيسي.`);
-    closeViewer();
+    await closeViewer();
     process.exit(0);
   }
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   log('🛑 إغلاق (SIGINT)');
   cleanup();
-  closeViewer();
+  await closeViewer();
   if (bot) bot.end();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   log('🛑 إغلاق (SIGTERM)');
   cleanup();
-  closeViewer();
+  await closeViewer();
   if (bot) bot.end();
   process.exit(0);
 });
