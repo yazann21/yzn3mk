@@ -7,15 +7,12 @@ const axios = require('axios');
 
 let bot = null;
 let logFile = null;
-let viewerStarted = false;
-let viewerServer = null;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
 let teamList = [];
 let killCount = 0;
 let deathCount = 0;
-let isClosing = false;
 
 const args = process.argv.slice(2);
 const config = {
@@ -156,79 +153,6 @@ function attackNearest() {
   }
 }
 
-async function closeViewer() {
-  if (isClosing) return;
-  isClosing = true;
-  if (viewerServer) {
-    return new Promise((resolve) => {
-      viewerServer.close(() => {
-        log(`🛑 خادم الكاميرا مغلق`);
-        viewerServer = null;
-        isClosing = false;
-        resolve();
-      });
-      setTimeout(() => {
-        if (viewerServer) {
-          try { viewerServer.closeAllConnections?.(); viewerServer.emit('close'); } catch(e) {}
-          viewerServer = null;
-          isClosing = false;
-          resolve();
-        }
-      }, 2000);
-    });
-  }
-  isClosing = false;
-  return Promise.resolve();
-}
-
-async function startViewer() {
-  if (viewerStarted) return;
-  try {
-    await closeViewer();
-    // استخدام منفذ ديناميكي (0) – يختار النظام منفذاً حراً تلقائياً
-    const desiredPort = 0;
-    
-    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    const http = require('http');
-    const express = require('express');
-    const app = express();
-    const server = http.createServer(app);
-    viewerServer = server;
-    
-    server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        log(`⚠️ المنفذ مشغول، إعادة محاولة بعد ثانية...`);
-        setTimeout(() => startViewer(), 1000);
-      } else {
-        log(`⚠️ خطأ في خادم الكاميرا: ${err.message}`);
-      }
-    });
-    
-    server.listen(desiredPort, () => {
-      const actualPort = server.address().port;
-      log(`🎥 كاميرا محلية على المنفذ ${actualPort}`);
-      process.env.VIEWER_PORT = actualPort;
-      
-      if (process.env.NGROK_AUTHTOKEN) {
-        (async () => {
-          const ngrok = require('@ngrok/ngrok');
-          await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-          const url = await ngrok.forward({ addr: actualPort, authtoken_from_env: true });
-          log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
-          if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
-        })().catch(e => log(`⚠️ ngrok error: ${e.message}`));
-      } else {
-        log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
-      }
-    });
-    
-    mineflayerViewer(bot, { port: desiredPort, firstPerson: false, viewDistance: 6, server });
-    viewerStarted = true;
-  } catch (err) {
-    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
-  }
-}
-
 async function authenticateBot() {
   log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
   const userIdentifier = `bot_${config.botId}_${Date.now()}`;
@@ -320,7 +244,8 @@ async function createBot() {
       }
     }, 1000);
     
-    if (!viewerStarted) await startViewer();
+    // ⚡ الكاميرا معطلة مؤقتاً لزيادة السرعة
+    // if (!viewerStarted) await startViewer();
     
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
@@ -331,7 +256,7 @@ async function createBot() {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
           log(`😨 تعرض البوت للضرب! يتم الخروج فوراً.`);
-          closeViewer().then(() => process.exit(0));
+          process.exit(0);
         }
       });
     }
@@ -354,11 +279,9 @@ async function createBot() {
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
   
-  bot.on('end', async (reason) => {
+  bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    await closeViewer();
-    viewerStarted = false;
     log(`🔄 سيتم إعادة تشغيل البوت بعد 3 ثوانٍ...`);
     setTimeout(() => {
       createBot();
@@ -375,26 +298,23 @@ function cleanup() {
   currentTarget = null;
 }
 
-process.on('message', async (msg) => {
+process.on('message', (msg) => {
   if (msg && msg.type === 'force_exit') {
     log(`📢 أمر إنهاء فوري من الخادم الرئيسي.`);
-    await closeViewer();
     process.exit(0);
   }
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   log('🛑 إغلاق (SIGINT)');
   cleanup();
-  await closeViewer();
   if (bot) bot.end();
   process.exit(0);
 });
 
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
   log('🛑 إغلاق (SIGTERM)');
   cleanup();
-  await closeViewer();
   if (bot) bot.end();
   process.exit(0);
 });
