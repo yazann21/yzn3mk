@@ -327,10 +327,8 @@ function startBot(id) {
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
         if (data.need_auth && data.verification_uri && data.user_code) {
-            // عرض الرابط والرمز للمستخدم
             alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.\n\nبعد إتمام المصادقة، اضغط OK وسيتم تشغيل البوت.`);
             
-            // استدعاء مسار إكمال المصادقة
             fetch('/api/complete-auth', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
