@@ -8,6 +8,7 @@ const axios = require('axios');
 let bot = null;
 let logFile = null;
 let viewerStarted = false;
+let viewerServer = null;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -154,23 +155,41 @@ function attackNearest() {
   }
 }
 
+function closeViewer() {
+  if (viewerServer) {
+    viewerServer.close(() => log(`🛑 خادم الكاميرا مغلق`));
+    viewerServer = null;
+  }
+  viewerStarted = false;
+}
+
 async function startViewer() {
   try {
     const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
+    const http = require('http');
+    const express = require('express');
+    const app = express();
+    const server = http.createServer(app);
+    viewerServer = server;
+    
+    server.listen(viewerPort, () => {
+      log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+      if (process.env.NGROK_AUTHTOKEN) {
+        (async () => {
+          const ngrok = require('@ngrok/ngrok');
+          await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+          const url = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
+          log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
+          if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
+        })().catch(e => log(`⚠️ ngrok error: ${e.message}`));
+      } else {
+        log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+      }
+    });
+    
+    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6, server });
     viewerStarted = true;
-    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-
-    if (process.env.NGROK_AUTHTOKEN) {
-      const ngrok = require('@ngrok/ngrok');
-      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-      const url = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
-      log(`🌍 كاميرا عامة عبر ngrok: ${url.url()}`);
-      if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url.url()}` });
-    } else {
-      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
-    }
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }
@@ -193,7 +212,6 @@ async function authenticateBot() {
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
     log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
-    // إرسال التوكن إلى الخادم لحفظه في قاعدة البيانات
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
     try {
       await axios.post(`${apiUrl}/api/save-bot-token`, {
@@ -216,7 +234,6 @@ async function authenticateBot() {
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
   
-  // إذا كان البوت من نوع "مايكروسوفت حقيقي" ولا يوجد توكن مخزن، نطلب المصادقة أولاً
   if (authType === 'microsoft' && (!config.minecraftToken || config.minecraftToken === '')) {
     log(`⚠️ البوت من نوع "حساب حقيقي" لكن لا يوجد توكن مخزن. سيتم بدء المصادقة...`);
     try {
@@ -227,7 +244,7 @@ async function createBot() {
     } catch (err) {
       log(`❌ فشل المصادقة: ${err.message}`);
       log(`❌ لن يتم تشغيل البوت بدون توكن صالح.`);
-      process.exit(1); // إنهاء العملية وعدم الدخول أبداً
+      process.exit(1);
     }
   }
 
@@ -238,21 +255,18 @@ async function createBot() {
     port: 25565,
     username: config.username,
     version: config.version,
-    checkTimeoutInterval: 0,
-    connectTimeout: 60000,
-    keepAlive: true,
-    viewDistance: 'tiny'
-  };
-  
-  if (config.minecraftToken && config.minecraftToken !== '' && config.profileId) {
-    authConfig.auth = 'microsoft';
-    authConfig.session = {
+    auth: config.minecraftToken ? 'microsoft' : 'offline',
+    session: config.minecraftToken ? {
       accessToken: config.minecraftToken,
       selectedProfile: { id: config.profileId, name: config.username }
-    };
-  } else {
-    authConfig.auth = 'offline';
-  }
+    } : undefined,
+    connectTimeout: 500,
+    checkTimeoutInterval: 0,
+    keepAlive: true,
+    viewDistance: 'tiny',
+    skipValidation: true,
+    reconnect: false
+  };
   
   bot = mineflayer.createBot(authConfig);
   bot.loadPlugin(pathfinder);
@@ -280,7 +294,13 @@ async function createBot() {
       huntInterval = setInterval(() => attackNearest(), 2000);
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     } else if (config.botType === 'coward') {
-      bot.on('entityHurt', (e) => { if (e === bot.entity) { log(`😨 انضرب البوت! يتم قطع الاتصال`); bot.end(); process.exit(0); } });
+      bot.on('entityHurt', (entity) => {
+        if (entity === bot.entity) {
+          log(`😨 تعرض البوت للضرب! يتم الخروج فوراً.`);
+          closeViewer();
+          process.exit(0);
+        }
+      });
     }
   });
 
@@ -300,7 +320,17 @@ async function createBot() {
   });
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; setTimeout(createBot, 5000); });
+  
+  bot.on('end', (reason) => {
+    log(`❌ انقطع الاتصال: ${reason}`);
+    cleanup();
+    closeViewer();
+    log(`🔄 سيتم إعادة تشغيل البوت بعد 3 ثوانٍ...`);
+    setTimeout(() => {
+      createBot();
+    }, 3000);
+  });
+  
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
@@ -311,5 +341,28 @@ function cleanup() {
   currentTarget = null;
 }
 
-process.on('SIGINT', () => { log('🛑 إغلاق'); cleanup(); if (bot) bot.end(); process.exit(0); });
+process.on('message', (msg) => {
+  if (msg && msg.type === 'force_exit') {
+    log(`📢 أمر إنهاء فوري من الخادم الرئيسي.`);
+    closeViewer();
+    process.exit(0);
+  }
+});
+
+process.on('SIGINT', () => {
+  log('🛑 إغلاق (SIGINT)');
+  cleanup();
+  closeViewer();
+  if (bot) bot.end();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  log('🛑 إغلاق (SIGTERM)');
+  cleanup();
+  closeViewer();
+  if (bot) bot.end();
+  process.exit(0);
+});
+
 createBot();

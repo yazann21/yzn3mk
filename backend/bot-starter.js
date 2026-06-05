@@ -8,33 +8,20 @@ const botInventory = new Map();
 
 const VIEWER_BASE_PORT = 8080;
 
-/**
- * تشغيل بوت جديد
- * @param {number} botId - معرف البوت
- * @param {string} botName - اسم البوت (العرضي)
- * @param {string|null} mcToken - توكن مايكروسوفت (إن وجد)
- * @param {string} mcUsername - اسم المستخدم الحقيقي (إن وجد)
- * @param {string|null} mcProfileId - معرف الملف الشخصي (إن وجد)
- * @param {string} serverIp - عنوان السيرفر
- * @param {string} botType - نوع البوت (afk, hunter, coward)
- * @param {string} teamNames - أسماء الفريق (اختياري)
- * @param {string} version - إصدار ماينكرافت
- * @param {string} authType - 'microsoft' أو 'offline'
- */
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
-    // 🔥 قتل أي عملية سابقة لنفس البوت (لتجنب تعارض المنافذ)
-    const existingProcess = botProcesses.get(botId);
-    if (existingProcess) {
-        console.log(`[Bot ${botId}] عملية سابقة موجودة، يتم إنهاؤها...`);
-        existingProcess.kill('SIGTERM');
+    // قتل أي عملية سابقة لنفس البوت
+    const existing = botProcesses.get(botId);
+    if (existing) {
+        console.log(`[Bot ${botId}] إنهاء العملية السابقة...`);
+        try {
+            if (existing.connected) existing.send({ type: 'force_exit' });
+        } catch(e) {}
+        existing.kill('SIGTERM');
         botProcesses.delete(botId);
-        // انتظار قليل لتحرير المنفذ
-        setTimeout(() => {}, 500);
     }
 
     const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
     
-    // إعداد متغيرات البيئة
     const envVars = {
         ...process.env,
         BOT_ID: botId,
@@ -89,8 +76,27 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
 function stopBot(botId) {
     const p = botProcesses.get(botId);
     if (p) {
+        // إرسال أمر إنهاء فوري
+        if (p.connected) {
+            try {
+                p.send({ type: 'force_exit' });
+            } catch(e) {}
+        }
+        // SIGTERM فوري
         p.kill('SIGTERM');
-        botProcesses.delete(botId);
+        // بعد 100ms، اقتل بقوة إذا بقيت
+        setTimeout(() => {
+            if (botProcesses.has(botId)) {
+                try {
+                    process.kill(p.pid, 'SIGKILL');
+                } catch(e) {}
+                botProcesses.delete(botId);
+            }
+        }, 100);
+        // حذف من الخريطة بعد وقت قصير
+        setTimeout(() => {
+            botProcesses.delete(botId);
+        }, 200);
         return true;
     }
     return false;
