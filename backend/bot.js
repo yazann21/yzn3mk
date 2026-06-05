@@ -218,9 +218,9 @@ async function createBot() {
       accessToken: config.minecraftToken,
       selectedProfile: { id: config.profileId, name: config.username }
     } : undefined,
-    connectTimeout: 500,
-    checkTimeoutInterval: 0,
-    keepAlive: true,
+    connectTimeout: 300,           // ⚡ 0.3 ثانية فقط للاتصال
+    checkTimeoutInterval: 0,       // ⚡ لا تفحص انقطاع الاتصال
+    keepAlive: false,              // ⚡ تعطيل keepAlive (قد يزيد السرعة)
     viewDistance: 'tiny',
     skipValidation: true,
     reconnect: false
@@ -233,7 +233,8 @@ async function createBot() {
   
   bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
-    setTimeout(() => equipEverythingFast(), 500);
+    // تجهيز الدروع بسرعة
+    setTimeout(() => equipEverythingFast(), 200);
     setInterval(() => equipEverythingFast(), 1000);
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
@@ -243,9 +244,6 @@ async function createBot() {
         if (food) { bot.equip(food, 'hand'); bot.consume(); log(`🍎 أكل ${food.name}`); }
       }
     }, 1000);
-    
-    // ⚡ الكاميرا معطلة مؤقتاً لزيادة السرعة
-    // if (!viewerStarted) await startViewer();
     
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
@@ -265,7 +263,7 @@ async function createBot() {
   bot.on('death', () => {
     deathCount++;
     log(`💀 مات البوت (إجمالي الوفيات: ${deathCount})`);
-    setTimeout(() => equipEverythingFast(), 1000);
+    setTimeout(() => equipEverythingFast(), 500);
   });
   
   bot.on('entityHurt', (entity) => {
@@ -282,10 +280,8 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    log(`🔄 سيتم إعادة تشغيل البوت بعد 3 ثوانٍ...`);
-    setTimeout(() => {
-      createBot();
-    }, 3000);
+    log(`🔄 إعادة تشغيل فورية...`);
+    createBot();   // ⚡ بدون تأخير
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
