@@ -1,20 +1,15 @@
 const mineflayer = require('mineflayer');
 const { pathfinder } = require('mineflayer-pathfinder');
-const Movements = require('mineflayer-pathfinder').Movements;
-const { GoalFollow } = require('mineflayer-pathfinder').goals;
 const fs = require('fs');
 const path = require('path');
 
 let bot = null;
-let isRunning = true;
 let logFile = null;
 let viewerStarted = false;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
 let teamList = [];
-let gearCheckInterval = null;
-let autoTotemInterval = null;
 let killCount = 0;
 let deathCount = 0;
 
@@ -23,7 +18,7 @@ const config = {
   botId: process.env.BOT_ID || args[0] || 'unknown',
   minecraftToken: process.env.MC_TOKEN || args[1] || null,
   username: process.env.BOT_USERNAME || args[2] || 'BotUser',
-  profileId: process.env.BOT_PROFILE_ID || args[3] || 'offline-uuid',
+  profileId: process.env.BOT_PROFILE_ID || args[3] || null,
   serverIp: process.env.SERVER_IP || args[4],
   botType: process.env.BOT_TYPE || args[5] || 'afk',
   teamNames: process.env.TEAM_NAMES || args[6] || '',
@@ -59,6 +54,7 @@ function updateStats() {
 }
 
 function getBestArmorName() {
+  if (!bot.inventory) return 'لا يوجد';
   const armorTypes = ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'];
   for (const type of armorTypes) {
     const chest = bot.inventory.items().find(i => i.name.includes(`${type}_chestplate`));
@@ -66,7 +62,9 @@ function getBestArmorName() {
   }
   return 'لا يوجد';
 }
+
 function getBestWeaponName() {
+  if (!bot.inventory) return 'لا يوجد';
   const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
   for (const type of weaponTypes) {
     const weapon = bot.inventory.items().find(i => i.name.includes(type));
@@ -74,7 +72,9 @@ function getBestWeaponName() {
   }
   return 'لا يوجد';
 }
+
 function getBestWeapon() {
+  if (!bot.inventory) return null;
   const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
   for (const type of weaponTypes) {
     const weapon = bot.inventory.items().find(item => item.name.includes(type));
@@ -84,6 +84,7 @@ function getBestWeapon() {
 }
 
 function equipEverythingFast() {
+  if (!bot.inventory) return;
   try {
     const armorSlots = [
       { type: 'helmet', slot: 'head', order: ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'] },
@@ -119,6 +120,7 @@ function followAndAttack(entity, name) {
   if (currentTarget === name) return;
   currentTarget = name;
   log(`🏃 يطارد ${name}!`);
+  const { GoalFollow } = require('mineflayer-pathfinder').goals;
   bot.pathfinder.setGoal(new GoalFollow(entity, 2.5), true);
   if (combatInterval) clearInterval(combatInterval);
   combatInterval = setInterval(() => {
@@ -151,14 +153,12 @@ function attackNearest() {
 }
 
 function createBot() {
-  log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}] باسم ${config.username}`);
+  log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}] باسم ${config.username} (${config.minecraftToken ? 'حساب حقيقي' : 'وضع غير مسجل'})`);
   
-  const auth = config.minecraftToken ? 'microsoft' : 'offline';
   const authConfig = {
     host: config.serverIp,
     port: 25565,
     username: config.username,
-    auth: auth,
     version: config.version,
     checkTimeoutInterval: 0,
     connectTimeout: 60000,
@@ -166,15 +166,18 @@ function createBot() {
     viewDistance: 'tiny'
   };
   
-  if (config.minecraftToken && config.profileId) {
+  // إذا كان هناك توكن حقيقي، استخدم وضع microsoft مع الجلسة
+  if (config.minecraftToken && config.minecraftToken !== '' && config.profileId) {
+    authConfig.auth = 'microsoft';
     authConfig.session = {
       accessToken: config.minecraftToken,
       selectedProfile: { id: config.profileId, name: config.username }
     };
+  } else {
+    authConfig.auth = 'offline';
   }
   
   bot = mineflayer.createBot(authConfig);
-
   bot.loadPlugin(pathfinder);
 
   bot.on('login', () => log(`✅ دخل البوت بنجاح باسم ${bot.username}`));
@@ -182,11 +185,7 @@ function createBot() {
   bot.on('spawn', () => {
     log(`📍 ظهر البوت في العالم`);
     setTimeout(() => equipEverythingFast(), 500);
-    gearCheckInterval = setInterval(() => equipEverythingFast(), 1000);
-    autoTotemInterval = setInterval(() => {
-      const totem = bot.inventory.items().find(i => i.name.includes('totem'));
-      if (totem && bot.supportFeature('doesntHaveOffHandSlot')) bot.equip(totem, 'off-hand');
-    }, 500);
+    setInterval(() => equipEverythingFast(), 1000);
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
     setInterval(() => {
@@ -196,12 +195,13 @@ function createBot() {
       }
     }, 1000);
     
+    // تشغيل الكاميرا
     if (!viewerStarted) {
       try { 
         const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
         require('prismarine-viewer').mineflayer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 }); 
         viewerStarted = true; 
-        log(`🎥 كاميرا: http://localhost:${viewerPort}`);
+        log(`🎥 كاميرا تعمل على المنفذ ${viewerPort}`);
       } catch (err) { log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`); }
     }
     
@@ -211,7 +211,7 @@ function createBot() {
       huntInterval = setInterval(() => attackNearest(), 2000);
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     } else if (config.botType === 'coward') {
-      bot.on('entityHurt', (e) => { if (e === bot.entity) { log(`😨 انضرب البوت! يتم قطع الاتصال`); isRunning = false; bot.end(); process.exit(0); } });
+      bot.on('entityHurt', (e) => { if (e === bot.entity) { log(`😨 انضرب البوت! يتم قطع الاتصال`); bot.end(); process.exit(0); } });
     }
   });
 
@@ -231,16 +231,14 @@ function createBot() {
   });
 
   bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; if (isRunning) setTimeout(createBot, 5000); });
-  bot.on('error', (err) => log(`⚠️ خطأ: ${err.message}`));
+  bot.on('end', (reason) => { log(`❌ انقطع الاتصال: ${reason}`); cleanup(); viewerStarted = false; setTimeout(createBot, 5000); });
+  bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
 }
 
 function cleanup() {
   if (combatInterval) clearInterval(combatInterval);
   if (huntInterval) clearInterval(huntInterval);
-  if (gearCheckInterval) clearInterval(gearCheckInterval);
-  if (autoTotemInterval) clearInterval(autoTotemInterval);
-  combatInterval = huntInterval = gearCheckInterval = autoTotemInterval = null;
+  combatInterval = huntInterval = null;
   currentTarget = null;
 }
 

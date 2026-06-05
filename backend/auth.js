@@ -43,5 +43,3 @@ async function getMinecraftProfile(accessToken) {
 }
 
 module.exports = { getAuthUrl, getTokenFromCode, getMinecraftProfile };
-
-

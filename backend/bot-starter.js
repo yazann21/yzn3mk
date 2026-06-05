@@ -10,13 +10,13 @@ const VIEWER_BASE_PORT = 8080;
 
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10') {
     const viewerPort = VIEWER_BASE_PORT + parseInt(botId);
-    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botId, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames, version], {
+    const botProcess = spawn('node', [path.join(__dirname, 'bot.js'), botId, mcToken || '', mcUsername || botName, mcProfileId || '', serverIp, botType, teamNames, version], {
         env: {
             ...process.env,
             BOT_ID: botId,
-            MC_TOKEN: mcToken,
-            BOT_USERNAME: mcUsername,
-            BOT_PROFILE_ID: mcProfileId,
+            MC_TOKEN: mcToken || '',
+            BOT_USERNAME: mcUsername || botName,
+            BOT_PROFILE_ID: mcProfileId || '',
             SERVER_IP: serverIp,
             BOT_TYPE: botType,
             TEAM_NAMES: teamNames,
@@ -48,7 +48,7 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     });
 
     botProcesses.set(botId, botProcess);
-    console.log(`✅ Bot ${botId} (${mcUsername}) started with camera on port ${viewerPort}`);
+    console.log(`✅ Bot ${botId} (${mcUsername || botName}) started with camera on port ${viewerPort}`);
     return { process: botProcess, logs };
 }
 

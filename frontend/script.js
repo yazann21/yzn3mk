@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v4.0 - النسخة النهائية (مع مصادقة البوت عند التشغيل)
+// BOT CRAFT v5.0 - النسخة النهائية (زر تحقق منفصل وتشغيل تلقائي)
 // ========================================
 
 let currentUser = null;
@@ -29,7 +29,6 @@ const specialServerVersions = {
     'donut': '1.21.10'
 };
 
-// ---------- تهيئة الصفحة ----------
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         const loading = document.getElementById('loadingOverlay');
@@ -45,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadBots();
 });
 
-// ---------- مصادقة مايكروسوفت ----------
 function initAuth() {
     fetch('/api/user', { credentials: 'include' })
         .then(res => {
@@ -78,24 +76,15 @@ function initAuth() {
 }
 
 function showLogin() {
-    const overlay = document.getElementById('loginOverlay');
-    const wrapper = document.getElementById('appWrapper');
-    if (overlay) overlay.style.display = 'flex';
-    if (wrapper) wrapper.style.display = 'none';
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('appWrapper').style.display = 'none';
 }
 
 function showApp() {
-    const overlay = document.getElementById('loginOverlay');
-    const wrapper = document.getElementById('appWrapper');
-    if (overlay) overlay.style.display = 'none';
-    if (wrapper) wrapper.style.display = 'flex';
-    
-    const sidebarName = document.getElementById('sidebarUsername');
-    if (sidebarName) sidebarName.innerHTML = currentUser.username;
-    const settingsName = document.getElementById('settingsUsername');
-    if (settingsName) settingsName.innerHTML = currentUser.username;
-    const welcomeName = document.getElementById('welcomeUsername');
-    if (welcomeName) welcomeName.innerHTML = currentUser.username;
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('appWrapper').style.display = 'flex';
+    document.getElementById('sidebarUsername').innerHTML = currentUser.username;
+    document.getElementById('settingsUsername').innerHTML = currentUser.username;
 }
 
 function logout() {
@@ -105,84 +94,52 @@ function logout() {
     });
 }
 
-// ---------- أحداث الواجهة ----------
 function initEventListeners() {
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) logoutBtn.addEventListener('click', logout);
+    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('createBotType').addEventListener('change', () => {});
+    document.getElementById('editBotType').addEventListener('change', (e) => {
+        document.getElementById('editTeamGroup').style.display = e.target.value === 'hunter' ? 'block' : 'none';
+    });
+    document.getElementById('createServerIp').addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
     
-    const createType = document.getElementById('createBotType');
-    if (createType) createType.addEventListener('change', () => {});
-    const editType = document.getElementById('editBotType');
-    if (editType) {
-        editType.addEventListener('change', (e) => {
-            const teamRow = document.getElementById('editTeamGroup');
-            if (teamRow) teamRow.style.display = e.target.value === 'hunter' ? 'block' : 'none';
-        });
-    }
-    const serverIp = document.getElementById('createServerIp');
-    if (serverIp) serverIp.addEventListener('input', (e) => updateVersionsForServer(e.target.value, 'createVersion'));
-    
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(link => {
+    document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
             navigateTo(link.dataset.page);
         });
     });
-    const menuToggle = document.getElementById('mobileMenuToggle');
-    if (menuToggle) {
-        menuToggle.addEventListener('click', () => {
-            const sidebar = document.querySelector('.glass-sidebar');
-            if (sidebar) sidebar.classList.toggle('open');
-        });
-    }
-    const createFloat = document.getElementById('createBotFloatBtn');
-    if (createFloat) createFloat.addEventListener('click', () => navigateTo('create'));
-    
-    const filterStatus = document.getElementById('filterStatus');
-    if (filterStatus) filterStatus.addEventListener('change', () => renderBots());
-    const filterType = document.getElementById('filterType');
-    if (filterType) filterType.addEventListener('change', () => renderBots());
-    const botSearch = document.getElementById('botSearch');
-    if (botSearch) botSearch.addEventListener('input', () => renderBots());
-    
-    const darkMode = document.getElementById('darkModeToggle');
-    if (darkMode) {
-        darkMode.addEventListener('change', (e) => {
-            if (!e.target.checked) {
-                document.body.style.background = '#f0f0f0';
-                document.body.style.color = '#1a1a2e';
-            } else {
-                document.body.style.background = 'linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%)';
-                document.body.style.color = '#ffffff';
-            }
-        });
-    }
+    document.getElementById('mobileMenuToggle').addEventListener('click', () => {
+        document.querySelector('.glass-sidebar').classList.toggle('open');
+    });
+    document.getElementById('createBotFloatBtn').addEventListener('click', () => navigateTo('create'));
+    document.getElementById('filterStatus').addEventListener('change', () => renderBots());
+    document.getElementById('filterType').addEventListener('change', () => renderBots());
+    document.getElementById('botSearch').addEventListener('input', () => renderBots());
+    document.getElementById('darkModeToggle').addEventListener('change', (e) => {
+        if (!e.target.checked) {
+            document.body.style.background = '#f0f0f0';
+            document.body.style.color = '#1a1a2e';
+        } else {
+            document.body.style.background = 'linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f1a 100%)';
+            document.body.style.color = '#ffffff';
+        }
+    });
     
     setInterval(() => {
-        if (document.getElementById('dashboardPage')?.classList.contains('active')) loadDashboard();
-        if (document.getElementById('botsPage')?.classList.contains('active')) loadBots();
+        if (document.getElementById('dashboardPage').classList.contains('active')) loadDashboard();
+        if (document.getElementById('botsPage').classList.contains('active')) loadBots();
     }, 15000);
 }
 
 function navigateTo(page) {
-    const pages = ['dashboard', 'bots', 'create', 'analytics', 'settings'];
-    pages.forEach(p => {
-        const el = document.getElementById(`${p}Page`);
-        if (el) el.classList.remove('active');
+    ['dashboard', 'bots', 'create', 'analytics', 'settings'].forEach(p => {
+        document.getElementById(`${p}Page`).classList.remove('active');
     });
-    const activePage = document.getElementById(`${page}Page`);
-    if (activePage) activePage.classList.add('active');
-    
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(link => link.classList.remove('active'));
-    const activeLink = document.querySelector(`.nav-link[data-page="${page}"]`);
-    if (activeLink) activeLink.classList.add('active');
-    
+    document.getElementById(`${page}Page`).classList.add('active');
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+    document.querySelector(`.nav-link[data-page="${page}"]`).classList.add('active');
     const titles = { dashboard: 'لوحة التحكم', bots: 'البوتات الخاصة', create: 'إنشاء بوت', analytics: 'الإحصائيات', settings: 'الإعدادات' };
-    const titleEl = document.getElementById('pageTitle');
-    if (titleEl) titleEl.innerHTML = titles[page] || 'BotCraft';
-    
+    document.getElementById('pageTitle').innerHTML = titles[page] || 'BotCraft';
     if (page === 'dashboard') loadDashboard();
     if (page === 'bots') loadBots();
     if (page === 'analytics') loadAnalytics();
@@ -195,32 +152,10 @@ function updateVersionsForServer(serverIp, selectId) {
     for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
         if (serverLower.includes(key)) {
             versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion}</option>`;
-            showServerWarning(serverLower);
             return;
         }
     }
     versionSelect.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join('');
-    hideServerWarning();
-}
-
-function showServerWarning(serverName) {
-    let warning = document.getElementById('serverWarning');
-    if (!warning) {
-        warning = document.createElement('div');
-        warning.id = 'serverWarning';
-        warning.className = 'info-banner';
-        warning.style.background = 'rgba(239,68,68,0.1)';
-        warning.style.borderLeftColor = '#ef4444';
-        const container = document.querySelector('#createPage .form-container');
-        if (container) container.appendChild(warning);
-    }
-    if (serverName.includes('hypixel')) warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Hypixel يدعم 1.8.9 فقط';
-    else if (serverName.includes('donut')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم 1.21';
-}
-
-function hideServerWarning() {
-    const w = document.getElementById('serverWarning');
-    if (w) w.remove();
 }
 
 function initCharts() {
@@ -228,7 +163,7 @@ function initCharts() {
     if (ctx1) {
         activityChart = new Chart(ctx1, {
             type: 'line',
-            data: { labels: ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'], datasets: [{ label: 'نشاط البوتات', data: [12, 19, 15, 17, 14, 20, 25], borderColor: globalColor, backgroundColor: globalColor + '20', borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: globalColor, pointBorderColor: '#fff' }] },
+            data: { labels: ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'], datasets: [{ label: 'نشاط البوتات', data: [12, 19, 15, 17, 14, 20, 25], borderColor: globalColor, backgroundColor: globalColor + '20', borderWidth: 2, fill: true, tension: 0.4 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#a0a0c0' } } }, scales: { y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a0a0c0' } }, x: { grid: { display: false }, ticks: { color: '#a0a0c0' } } } }
         });
     }
@@ -262,22 +197,16 @@ function initColorPicker() {
 function loadDashboard() {
     fetch('/api/bots', { credentials: 'include' }).then(res => res.json()).then(data => {
         const bots = data.bots || [];
-        const totalSpan = document.getElementById('statTotalBots');
-        if (totalSpan) totalSpan.innerHTML = bots.length;
-        const onlineSpan = document.getElementById('statOnlineBots');
-        if (onlineSpan) onlineSpan.innerHTML = bots.filter(b => b.status === 'online').length;
-        const serversSpan = document.getElementById('statServers');
-        if (serversSpan) serversSpan.innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
-        const countNav = document.getElementById('botsCountNav');
-        if (countNav) countNav.innerHTML = bots.length;
+        document.getElementById('statTotalBots').innerHTML = bots.length;
+        document.getElementById('statOnlineBots').innerHTML = bots.filter(b => b.status === 'online').length;
+        document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
+        document.getElementById('botsCountNav').innerHTML = bots.length;
         if (distributionChart) {
             distributionChart.data.datasets[0].data = [bots.filter(b => b.bot_type === 'afk').length, bots.filter(b => b.bot_type === 'hunter').length, bots.filter(b => b.bot_type === 'coward').length];
             distributionChart.update();
         }
         const recentDiv = document.getElementById('recentActivities');
-        if (recentDiv) {
-            recentDiv.innerHTML = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('') || '<div class="activity-skeleton">لا توجد نشاطات</div>';
-        }
+        recentDiv.innerHTML = bots.slice(0, 5).map(b => `<div class="activity-item"><div class="activity-icon ${b.status === 'online' ? 'success' : 'danger'}"><i class="fas fa-${b.status === 'online' ? 'plug' : 'power-off'}"></i></div><div class="activity-content"><div class="activity-title">${escapeHtml(b.bot_name)} ${b.status === 'online' ? 'تم تشغيله' : 'تم إيقافه'}</div><div class="activity-time">${new Date(b.created_at).toLocaleString()}</div></div></div>`).join('') || '<div class="activity-skeleton">لا توجد نشاطات</div>';
     });
 }
 
@@ -289,21 +218,30 @@ function loadBots() {
 }
 
 function renderBots() {
-    const filterStatus = document.getElementById('filterStatus')?.value || 'all';
-    const filterType = document.getElementById('filterType')?.value || 'all';
-    const searchTerm = document.getElementById('botSearch')?.value?.toLowerCase() || '';
+    const filterStatus = document.getElementById('filterStatus').value;
+    const filterType = document.getElementById('filterType').value;
+    const searchTerm = document.getElementById('botSearch').value.toLowerCase();
     let filtered = currentBots.filter(b => (filterStatus === 'all' || b.status === filterStatus) && (filterType === 'all' || b.bot_type === filterType) && (b.bot_name.toLowerCase().includes(searchTerm)));
     const container = document.getElementById('botsGrid');
-    if (!container) return;
     if (filtered.length === 0) {
         container.innerHTML = '<div class="activity-skeleton">🤖 لا توجد بوتات</div>';
         return;
     }
     container.innerHTML = filtered.map(b => `
         <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
-            <div class="bot-header"><div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div><div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div></div>
-            <div class="bot-details"><div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div><div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div><div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div><div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div></div>
+            <div class="bot-header">
+                <div class="bot-name"><i class="fas fa-robot" style="color: ${b.status === 'online' ? '#22c55e' : '#6b7280'}"></i>${escapeHtml(b.bot_name)}</div>
+                <div class="bot-status"><span class="status-dot ${b.status === 'online' ? 'online' : 'offline'}"></span>${b.status === 'online' ? 'متصل' : 'غير متصل'}</div>
+            </div>
+            <div class="bot-details">
+                <div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div>
+                <div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div>
+                <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
+                <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
+                ${b.mc_username ? `<div><i class="fas fa-user-check"></i> الحساب: ${escapeHtml(b.mc_username)}</div>` : '<div><i class="fas fa-user-secret"></i> وضع غير مسجل</div>'}
+            </div>
             <div class="bot-actions" onclick="event.stopPropagation()">
+                <button class="btn-verify" onclick="verifyBot(${b.id})"><i class="fas fa-key"></i> تحقق</button>
                 ${b.status === 'online' 
                     ? `<button class="btn-stop" onclick="stopBot(${b.id})"><i class="fas fa-stop"></i> إيقاف</button>
                        <button class="btn-restart" onclick="restartBot(${b.id})"><i class="fas fa-sync-alt"></i> إعادة تشغيل</button>`
@@ -318,7 +256,41 @@ function renderBots() {
     `).join('');
 }
 
-// ========== دالة تشغيل البوت (تعرض رابط ورمز مايكروسوفت عند الحاجة) ==========
+// ========== دالة التحقق المنفصلة (تظهر الرابط والرمز) ==========
+function verifyBot(id) {
+    fetch(`/api/bot-verify/${id}`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.need_verification) {
+                alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${data.verification_uri}\n🔢 الرمز: ${data.user_code}\n\n⚠️ تنبيه:\n- افتح الرابط في نافذة تصفح خاص (Incognito)\n- سجل دخولك بحساب مايكروسوفت الذي يملك Minecraft\n- أدخل الرمز خلال دقيقة\n\nبعد إتمام المصادقة، سيرتبط الحساب بهذا البوت تلقائياً.`);
+                // بعد دقيقة نتحقق من نجاح المصادقة
+                setTimeout(() => {
+                    fetch(`/api/bots`, { credentials: 'include' })
+                        .then(res => res.json())
+                        .then(botsData => {
+                            const updatedBot = botsData.bots.find(b => b.id == id);
+                            if (updatedBot && updatedBot.mc_username) {
+                                alert(`✅ تم التحقق بنجاح! البوت الآن مرتبط بحساب ${updatedBot.mc_username}`);
+                                loadBots();
+                            } else {
+                                alert('⏳ لم يتم التحقق بعد. تأكد من إدخال الرمز في المتصفح.');
+                            }
+                        });
+                }, 70000);
+            } else if (data.success) {
+                alert(`✅ تم التحقق بنجاح! الحساب: ${data.username}`);
+                loadBots();
+            } else {
+                alert('❌ فشل بدء عملية التحقق: ' + (data.error || 'خطأ'));
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('حدث خطأ أثناء محاولة التحقق');
+        });
+}
+
+// ========== دالة التشغيل (تدخل بدون تحقق إذا لم يكن هناك حساب) ==========
 function startBot(id) {
     fetch('/api/start-cloud-bot', {
         method: 'POST',
@@ -326,52 +298,19 @@ function startBot(id) {
         credentials: 'include',
         body: JSON.stringify({ botId: parseInt(id) })
     }).then(res => res.json()).then(data => {
-        if (data.need_minecraft_auth) {
-            // طلب مصادقة مايكروسوفت للحصول على التوكن
-            fetch(`/api/bot-verify/${id}`, { credentials: 'include' })
-                .then(verifyRes => verifyRes.json())
-                .then(verifyData => {
-                    if (verifyData.need_verification) {
-                        // عرض رابط ورمز المصادقة في نافذة منبثقة
-                        alert(`🔐 مصادقة البوت:\n\n🔗 الرابط: ${verifyData.verification_uri}\n🔢 الرمز: ${verifyData.user_code}\n\nافتح الرابط في متصفح آخر، سجل دخولك بحساب ماينكرافت الحقيقي، وأدخل الرمز.\n\nبعد إتمام المصادقة، اضغط OK وسيتم تشغيل البوت.`);
-                        
-                        // بعد إتمام المصادقة، نطلب من الخادم إتمام العملية
-                        fetch('/api/complete-auth', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include',
-                            body: JSON.stringify({ botId: parseInt(id) })
-                        }).then(completeRes => completeRes.json()).then(completeData => {
-                            if (completeData.success) {
-                                alert('✅ تم التحقق من البوت بنجاح!');
-                                loadBots();
-                                loadDashboard();
-                            } else {
-                                alert('❌ فشل تشغيل البوت: ' + (completeData.error || 'خطأ غير معروف'));
-                            }
-                        }).catch(err => {
-                            console.error('Completion error:', err);
-                            alert('حدث خطأ أثناء إتمام المصادقة');
-                        });
-                    } else if (verifyData.success) {
-                        alert('✅ تم التحقق من البوت بنجاح!');
-                        loadBots();
-                        loadDashboard();
-                    } else {
-                        alert('❌ فشل المصادقة: ' + (verifyData.error || 'خطأ غير معروف'));
-                    }
-                }).catch(err => {
-                    console.error('Verification error:', err);
-                    alert('حدث خطأ أثناء مصادقة البوت');
-                });
-        } else if (data.success) {
+        if (data.success) {
+            if (data.mode === 'offline') {
+                alert('✅ تم تشغيل البوت في وضع غير مسجل (بدون حساب مايكروسوفت).');
+            } else {
+                alert('✅ تم تشغيل البوت بحساب مايكروسوفت الحقيقي.');
+            }
             loadBots();
             loadDashboard();
         } else if (data.error) {
             alert('خطأ: ' + data.error);
         }
     }).catch(err => {
-        console.error('Start bot error:', err);
+        console.error(err);
         alert('حدث خطأ أثناء تشغيل البوت');
     });
 }
@@ -393,41 +332,27 @@ function deleteBot(id) {
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
-    
-    const editId = document.getElementById('editBotId');
-    const editName = document.getElementById('editBotName');
-    const editType = document.getElementById('editBotType');
-    const editServer = document.getElementById('editServerIp');
-    const editTeamNames = document.getElementById('editTeamNames');
-    const editVersion = document.getElementById('editVersion');
-    const editTeamGroup = document.getElementById('editTeamGroup');
-    const editModal = document.getElementById('editModal');
-    
-    if (!editId || !editName || !editType || !editServer || !editTeamNames || !editVersion || !editModal) return;
-    
-    editId.value = bot.id;
-    editName.value = bot.bot_name;
-    editType.value = bot.bot_type;
-    editServer.value = bot.server_ip;
-    editTeamNames.value = bot.team_names || '';
-    editVersion.innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
-    if (editTeamGroup) editTeamGroup.style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
-    editModal.style.display = 'flex';
+    document.getElementById('editBotId').value = bot.id;
+    document.getElementById('editBotName').value = bot.bot_name;
+    document.getElementById('editBotType').value = bot.bot_type;
+    document.getElementById('editServerIp').value = bot.server_ip;
+    document.getElementById('editTeamNames').value = bot.team_names || '';
+    document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
+    document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
+    document.getElementById('editModal').style.display = 'flex';
 }
 
 function closeEditModal() {
-    const modal = document.getElementById('editModal');
-    if (modal) modal.style.display = 'none';
+    document.getElementById('editModal').style.display = 'none';
 }
 
 function saveEditBot() {
-    const botId = parseInt(document.getElementById('editBotId')?.value);
-    const botName = document.getElementById('editBotName')?.value;
-    const botType = document.getElementById('editBotType')?.value;
-    const serverIp = document.getElementById('editServerIp')?.value;
-    const teamNames = document.getElementById('editTeamNames')?.value;
-    const version = document.getElementById('editVersion')?.value;
-    if (!botId) return;
+    const botId = parseInt(document.getElementById('editBotId').value);
+    const botName = document.getElementById('editBotName').value;
+    const botType = document.getElementById('editBotType').value;
+    const serverIp = document.getElementById('editServerIp').value;
+    const teamNames = document.getElementById('editTeamNames').value;
+    const version = document.getElementById('editVersion').value;
     fetch('/api/update-bot', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -436,7 +361,7 @@ function saveEditBot() {
     }).then(() => { closeEditModal(); loadBots(); });
 }
 
-document.getElementById('createBotForm')?.addEventListener('submit', (e) => {
+document.getElementById('createBotForm').addEventListener('submit', (e) => {
     e.preventDefault();
     fetch('/api/create-bot-cloud', {
         method: 'POST',
@@ -459,23 +384,14 @@ function openCameraViewer(botId) {
     window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
 }
 
-function closeCameraModal() {
-    const modal = document.getElementById('cameraModal');
-    if (modal) modal.style.display = 'none';
-}
-
 function openLogs(id) {
-    const modal = document.getElementById('logsModal');
-    const logsPre = document.getElementById('logsText');
-    if (!modal || !logsPre) return;
     currentLogsBotId = id;
-    modal.style.display = 'flex';
+    document.getElementById('logsModal').style.display = 'flex';
     if (logsInterval) clearInterval(logsInterval);
     const fetchLogs = () => {
         fetch(`/api/bot-logs/${id}`, { credentials: 'include' })
             .then(res => res.json())
-            .then(data => { logsPre.innerHTML = (data.logs || []).join('\n'); })
-            .catch(err => console.error('Failed to fetch logs:', err));
+            .then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); });
     };
     fetchLogs();
     logsInterval = setInterval(fetchLogs, 3000);
@@ -483,18 +399,14 @@ function openLogs(id) {
 
 function closeLogs() {
     if (logsInterval) clearInterval(logsInterval);
-    const modal = document.getElementById('logsModal');
-    if (modal) modal.style.display = 'none';
+    document.getElementById('logsModal').style.display = 'none';
 }
 
 function refreshLogs() {
     if (currentLogsBotId) {
         fetch(`/api/bot-logs/${currentLogsBotId}`, { credentials: 'include' })
             .then(res => res.json())
-            .then(data => {
-                const logsPre = document.getElementById('logsText');
-                if (logsPre) logsPre.innerHTML = (data.logs || []).join('\n');
-            });
+            .then(data => { document.getElementById('logsText').innerHTML = (data.logs || []).join('\n'); });
     }
 }
 
@@ -507,12 +419,9 @@ function clearLogs() {
 
 function openBotControl(id, name) {
     controlBotId = id;
-    const title = document.getElementById('controlTitle');
-    if (title) title.innerHTML = `🎮 التحكم بـ ${name}`;
-    const cameraFrame = document.getElementById('controlCameraFrame');
-    if (cameraFrame) cameraFrame.src = `/camera/${id}`;
-    const modal = document.getElementById('controlModal');
-    if (modal) modal.style.display = 'flex';
+    document.getElementById('controlTitle').innerHTML = `🎮 التحكم بـ ${name}`;
+    document.getElementById('controlCameraFrame').src = `/camera/${id}`;
+    document.getElementById('controlModal').style.display = 'flex';
     if (statsInterval) clearInterval(statsInterval);
     if (inventoryInterval) clearInterval(inventoryInterval);
     statsInterval = setInterval(() => fetchBotStats(id), 2000);
@@ -524,8 +433,7 @@ function openBotControl(id, name) {
 function closeBotControl() {
     if (statsInterval) clearInterval(statsInterval);
     if (inventoryInterval) clearInterval(inventoryInterval);
-    const modal = document.getElementById('controlModal');
-    if (modal) modal.style.display = 'none';
+    document.getElementById('controlModal').style.display = 'none';
     controlBotId = null;
 }
 
@@ -533,26 +441,16 @@ function fetchBotStats(id) {
     fetch(`/api/bot-stats/${id}`, { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
-            const statHealth = document.getElementById('statHealth');
-            if (statHealth) statHealth.innerHTML = data.health || '20';
-            const statFood = document.getElementById('statFood');
-            if (statFood) statFood.innerHTML = data.food || '20';
-            const statPosition = document.getElementById('statPosition');
-            if (statPosition) statPosition.innerHTML = data.position || '0,0,0';
-            const statArmor = document.getElementById('statArmor');
-            if (statArmor) statArmor.innerHTML = data.armor || 'لا يوجد';
-            const statWeapon = document.getElementById('statWeapon');
-            if (statWeapon) statWeapon.innerHTML = data.weapon || 'لا يوجد';
-            const statLevel = document.getElementById('statLevel');
-            if (statLevel) statLevel.innerHTML = data.level || '0';
-            const detailLevel = document.getElementById('detailLevel');
-            if (detailLevel) detailLevel.innerHTML = data.level || '0';
-            const detailXp = document.getElementById('detailXp');
-            if (detailXp) detailXp.innerHTML = data.xp || '0';
-            const detailKills = document.getElementById('detailKills');
-            if (detailKills) detailKills.innerHTML = data.kills || '0';
-            const detailDeaths = document.getElementById('detailDeaths');
-            if (detailDeaths) detailDeaths.innerHTML = data.deaths || '0';
+            document.getElementById('statHealth').innerHTML = data.health || '20';
+            document.getElementById('statFood').innerHTML = data.food || '20';
+            document.getElementById('statPosition').innerHTML = data.position || '0,0,0';
+            document.getElementById('statArmor').innerHTML = data.armor || 'لا يوجد';
+            document.getElementById('statWeapon').innerHTML = data.weapon || 'لا يوجد';
+            document.getElementById('statLevel').innerHTML = data.level || '0';
+            document.getElementById('detailLevel').innerHTML = data.level || '0';
+            document.getElementById('detailXp').innerHTML = data.xp || '0';
+            document.getElementById('detailKills').innerHTML = data.kills || '0';
+            document.getElementById('detailDeaths').innerHTML = data.deaths || '0';
         }).catch(() => {});
 }
 
@@ -563,16 +461,11 @@ function fetchInventory(id) {
             if (data.inventory) {
                 currentInventory = data.inventory;
                 renderInventory();
-                const invHelmet = document.getElementById('invHelmet');
-                if (invHelmet) invHelmet.innerHTML = data.helmet || 'فارغ';
-                const invChest = document.getElementById('invChest');
-                if (invChest) invChest.innerHTML = data.chest || 'فارغ';
-                const invLegs = document.getElementById('invLegs');
-                if (invLegs) invLegs.innerHTML = data.legs || 'فارغ';
-                const invBoots = document.getElementById('invBoots');
-                if (invBoots) invBoots.innerHTML = data.boots || 'فارغ';
-                const invWeapon = document.getElementById('invWeapon');
-                if (invWeapon) invWeapon.innerHTML = data.weapon || 'فارغ';
+                document.getElementById('invHelmet').innerHTML = data.helmet || 'فارغ';
+                document.getElementById('invChest').innerHTML = data.chest || 'فارغ';
+                document.getElementById('invLegs').innerHTML = data.legs || 'فارغ';
+                document.getElementById('invBoots').innerHTML = data.boots || 'فارغ';
+                document.getElementById('invWeapon').innerHTML = data.weapon || 'فارغ';
             }
         }).catch(() => {});
 }
@@ -611,11 +504,10 @@ function sendCommand(cmd, extra = null) {
 }
 
 function sendChatMessage() {
-    const msg = document.getElementById('chatInput')?.value;
+    const msg = document.getElementById('chatInput').value;
     if (!msg) return;
     sendCommand('chat', msg);
-    const chatInput = document.getElementById('chatInput');
-    if (chatInput) chatInput.value = '';
+    document.getElementById('chatInput').value = '';
 }
 
 document.querySelectorAll('.move-btn, .action-btn, .recipe-btn').forEach(btn => {
@@ -634,8 +526,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        const activePane = document.getElementById(`${tab}Tab`);
-        if (activePane) activePane.classList.add('active');
+        document.getElementById(`${tab}Tab`).classList.add('active');
     });
 });
 
@@ -644,17 +535,13 @@ function loadAnalytics() {
         .then(res => res.json())
         .then(data => {
             const bots = data.bots || [];
-            const daysSpan = document.getElementById('analyticsDaysActive');
-            if (daysSpan) daysSpan.innerHTML = Math.ceil(bots.length * 1.2) || '1';
-            const commandsSpan = document.getElementById('analyticsTotalCommands');
-            if (commandsSpan) commandsSpan.innerHTML = Math.floor(bots.length * 42) || '0';
+            document.getElementById('analyticsDaysActive').innerHTML = Math.ceil(bots.length * 1.2) || '1';
+            document.getElementById('analyticsTotalCommands').innerHTML = Math.floor(bots.length * 42) || '0';
             let totalKills = 0, totalDeaths = 0;
             Promise.all(bots.map(bot => fetch(`/api/bot-stats/${bot.id}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({})))).then(statsArray => {
                 statsArray.forEach(stat => { totalKills += stat.kills || 0; totalDeaths += stat.deaths || 0; });
-                const killsSpan = document.getElementById('analyticsKills');
-                if (killsSpan) killsSpan.innerHTML = totalKills;
-                const deathsSpan = document.getElementById('analyticsDeaths');
-                if (deathsSpan) deathsSpan.innerHTML = totalDeaths;
+                document.getElementById('analyticsKills').innerHTML = totalKills;
+                document.getElementById('analyticsDeaths').innerHTML = totalDeaths;
             });
         });
 }
@@ -683,6 +570,7 @@ window.refreshInventory = refreshInventory;
 window.openBotControl = openBotControl;
 window.stopBot = stopBot;
 window.startBot = startBot;
+window.verifyBot = verifyBot;
 window.restartBot = restartBot;
 window.deleteBot = deleteBot;
 window.openEditModal = openEditModal;
