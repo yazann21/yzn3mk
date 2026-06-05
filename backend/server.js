@@ -34,11 +34,11 @@ app.use(session({
 
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, mc_token TEXT, mc_username TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-    db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+    db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
 });
 
-// ========== مصادقة المستخدم ==========
+// ========== مصادقة المستخدم (تسجيل الدخول) ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -53,15 +53,12 @@ app.get('/auth/callback', async (req, res) => {
     if (!code) return res.status(400).send('No code');
     try {
         const { accessToken } = await getTokenFromCode(code);
-        const { username, minecraftToken, minecraftUsername } = await getMinecraftProfile(accessToken);
-        
-        db.run(`INSERT OR REPLACE INTO users (username, mc_token, mc_username) VALUES (?, ?, ?)`, 
-            [username, minecraftToken || null, minecraftUsername || null], (err) => {
+        const { username } = await getMinecraftProfile(accessToken);
+        db.run(`INSERT OR IGNORE INTO users (username) VALUES (?)`, [username]);
+        db.get(`SELECT id FROM users WHERE username = ?`, [username], (err, row) => {
             if (err) return res.status(500).send('Database error');
-            req.session.userId = username;
+            req.session.userId = row.id;
             req.session.username = username;
-            req.session.minecraftToken = minecraftToken;
-            req.session.minecraftUsername = minecraftUsername;
             req.session.save(() => res.redirect('/'));
         });
     } catch (error) {
@@ -72,11 +69,7 @@ app.get('/auth/callback', async (req, res) => {
 
 app.get('/api/user', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    res.json({ 
-        username: req.session.username,
-        hasMinecraft: !!req.session.minecraftToken,
-        minecraftUsername: req.session.minecraftUsername || null
-    });
+    res.json({ username: req.session.username });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -101,23 +94,89 @@ app.post('/api/create-bot-cloud', (req, res) => {
         });
 });
 
-// ========== تشغيل البوت باستخدام التوكن المخزن في الجلسة ==========
+// ========== مصادقة البوت (باستخدام معرف Xbox العام وتدفق live) ==========
+const { Authflow, Titles } = require('prismarine-auth');
+const pendingFlows = new Map();
+
+app.get('/api/bot-verify/:botId', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const botId = parseInt(req.params.botId);
+    try {
+        const bot = await new Promise((resolve, reject) => {
+            db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, row) => {
+                if (err) reject(err);
+                else resolve(row);
+            });
+        });
+        if (!bot) return res.status(404).json({ error: 'Bot not found' });
+
+        // استخدام معرف Xbox العام وتدفق live (بدلاً من msal)
+        const flow = new Authflow(`bot_${botId}_${Date.now()}`, './ms-cache', {
+            authTitle: '000000004C20A968',  // معرف تطبيق Xbox العام
+            deviceType: 'Win32',
+            flow: 'live',  // التدفق المناسب للمعرفات العامة
+            onMsaCode: (data) => {
+                console.log(`\n🔐 مصادقة البوت ${botId}:`);
+                console.log(`🔗 الرابط: ${data.verification_uri}`);
+                console.log(`🔢 الرمز: ${data.user_code}`);
+                console.log(`⏱️ ينتهي خلال ${data.expires_in} ثانية\n`);
+            }
+        });
+        pendingFlows.set(botId, flow);
+
+        // انتظار الحصول على الرابط والرمز
+        const deviceData = await new Promise((resolve) => {
+            const originalOnMsaCode = flow['_onMsaCode'];
+            flow['_onMsaCode'] = (data) => {
+                resolve(data);
+                if (originalOnMsaCode) originalOnMsaCode(data);
+            };
+            // بدء العملية
+            flow.getMinecraftJavaToken().catch(err => console.error('Token error:', err));
+        });
+
+        // إرجاع الرابط والرمز للمستخدم
+        res.json({
+            verification_uri: deviceData.verification_uri,
+            user_code: deviceData.user_code,
+            message: 'افتح الرابط وأدخل الرمز باستخدام حساب ماينكرافت الحقيقي'
+        });
+
+        // متابعة العملية في الخلفية للحصول على التوكن وحفظه
+        flow.getMinecraftJavaToken()
+            .then(tokenResult => {
+                if (tokenResult && tokenResult.token) {
+                    db.run(`UPDATE bots SET mc_token = ? WHERE id = ?`, [tokenResult.token, botId], (err) => {
+                        if (err) console.error('DB update error:', err);
+                        else console.log(`✅ Bot ${botId} verified successfully.`);
+                        pendingFlows.delete(botId);
+                    });
+                }
+            })
+            .catch(err => console.error(`❌ Bot ${botId} verification failed:`, err));
+    } catch (error) {
+        console.error('Error in /api/bot-verify:', error);
+        res.status(500).json({ error: 'حدث خطأ أثناء محاولة التحقق: ' + error.message });
+    }
+});
+
+// تشغيل البوت باستخدام التوكن المخزن
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    if (!req.session.minecraftToken) {
-        return res.status(400).json({ error: 'need_minecraft_auth', message: '⚠️ لم يتم العثور على حساب ماينكرافت مرتبط بحساب مايكروسوفت الخاص بك. تأكد من أن حسابك يملك Minecraft Java Edition.' });
-    }
     const { botId } = req.body;
     db.get('SELECT * FROM bots WHERE id = ? AND user_id = ?', [botId, req.session.userId], (err, bot) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
+        if (!bot.mc_token) {
+            return res.status(400).json({ error: 'need_minecraft_auth', message: 'اضغط زر تحقق أولاً' });
+        }
         if (botProcesses.has(botId)) return res.json({ success: true });
-        startBot(botId, bot.bot_name, req.session.minecraftToken, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+        startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
         res.json({ success: true });
     });
 });
 
-// ========== باقي مسارات API ==========
+// ========== باقي المسارات ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -168,7 +227,7 @@ app.post('/api/restart-bot', (req, res) => {
         if (err || !bot) return res.status(404).json({ error: 'Bot not found' });
         stopBot(botId);
         setTimeout(() => {
-            startBot(botId, bot.bot_name, req.session.minecraftToken, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
+            startBot(botId, bot.bot_name, bot.mc_token, bot.server_ip, bot.bot_type, bot.team_names, bot.version);
             db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
         }, 1000);
         res.json({ success: true });
