@@ -165,12 +165,13 @@ async function startViewer() {
     log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
 
     if (process.env.NGROK_AUTHTOKEN) {
-      const ngrok = require('ngrok');
-      const url = await ngrok.connect({
-        authtoken: process.env.NGROK_AUTHTOKEN,
+      const ngrok = require('@ngrok/ngrok');
+      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+      const listener = await ngrok.forward({
         addr: viewerPort,
-        region: 'eu'
+        authtoken_from_env: true
       });
+      const url = listener.url();
       log(`🌍 كاميرا عامة عبر ngrok: ${url}`);
       if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url}` });
     } else {
