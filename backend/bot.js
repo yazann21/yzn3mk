@@ -15,6 +15,7 @@ let teamList = [];
 let killCount = 0;
 let deathCount = 0;
 let isDisconnecting = false;
+let isEating = false; // 🔒 قفل لمنع تكرار الأكل
 
 const args = process.argv.slice(2);
 const config = {
@@ -279,12 +280,29 @@ async function createBot() {
     setInterval(() => equipEverythingFast(), 1000);
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
+    
+    // 🍔 الأكل التلقائي مع قفل لمنع التكرار
     setInterval(() => {
+      if (!bot || !bot.entity || bot.health <= 0) return;
+      if (isEating) return;
       if (bot.food < 18 && bot.food > 0) {
-        const food = bot.inventory.items().find(i => i.name.includes('bread') || i.name.includes('apple') || i.name.includes('cooked') || i.name.includes('steak'));
-        if (food) { bot.equip(food, 'hand'); bot.consume(); log(`🍎 أكل ${food.name}`); }
+        const food = bot.inventory.items().find(i => i.name.includes('bread') || i.name.includes('apple') || i.name.includes('cooked') || i.name.includes('steak') || i.name.includes('golden_apple'));
+        if (food) {
+          isEating = true;
+          bot.equip(food, 'hand').then(() => {
+            bot.consume().catch(err => {
+              log(`⚠️ فشل الأكل: ${err.message}`);
+            }).finally(() => {
+              setTimeout(() => { isEating = false; }, 1000);
+            });
+          }).catch(err => {
+            log(`⚠️ فشل تجهيز الطعام: ${err.message}`);
+            isEating = false;
+          });
+          log(`🍴 بدأ أكل ${food.name}`);
+        }
       }
-    }, 1000);
+    }, 5000);
     
     if (!viewerStarted) await startViewer();
     
