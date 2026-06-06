@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع إصلاح الكاميرا
+// BOT CRAFT v6.0 - كامل مع تعديل إصدارات donutsmp.net
 // ========================================
 
 let currentUser = null;
@@ -23,10 +23,10 @@ const allVersions = [
     '1.11.2', '1.11.1', '1.11', '1.10.2', '1.10.1', '1.10', '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9', '1.8.9', '1.8.8'
 ];
 
+// إصدارات خاصة ببعض السيرفرات (تم إزالة donutsmp.net من هنا لأنه سيتم معالجته بشكل منفصل)
 const specialServerVersions = {
     'hypixel.net': '1.8.9',
-    'donutsmp.net': '1.21.10',
-    'donut': '1.21.10'
+    'donut': '1.21.10'   // أي سيرفر يحتوي على "donut" (غير donutsmp.net) سيأخذ هذا الإصدار
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -141,17 +141,54 @@ function navigateTo(page) {
     if (page === 'analytics') loadAnalytics();
 }
 
+// دالة تحديث الإصدارات حسب السيرفر (تم تعديلها لـ donutsmp.net)
 function updateVersionsForServer(serverIp, selectId) {
     const serverLower = serverIp.toLowerCase();
     const versionSelect = document.getElementById(selectId);
     if (!versionSelect) return;
+
+    // معالجة خاصة لـ donutsmp.net (يظهر فقط 1.21, 1.21.1, 1.21.2)
+    if (serverLower.includes('donutsmp.net')) {
+        const donutVersions = ['1.21', '1.21.1', '1.21.2'];
+        versionSelect.innerHTML = donutVersions.map(v => `<option value="${v}">${v}</option>`).join('');
+        versionSelect.value = '1.21'; // الإصدار الافتراضي
+        showServerWarning(serverLower);
+        return;
+    }
+
+    // معالجة باقي السيرفرات الخاصة (مثل hypixel)
     for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
         if (serverLower.includes(key)) {
             versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion}</option>`;
+            showServerWarning(serverLower);
             return;
         }
     }
+
+    // السيرفرات العادية: تعرض كل الإصدارات
     versionSelect.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join('');
+    hideServerWarning();
+}
+
+function showServerWarning(serverName) {
+    let warning = document.getElementById('serverWarning');
+    if (!warning) {
+        warning = document.createElement('div');
+        warning.id = 'serverWarning';
+        warning.className = 'info-banner';
+        warning.style.background = 'rgba(239,68,68,0.1)';
+        warning.style.borderLeftColor = '#ef4444';
+        const container = document.querySelector('#createPage .form-container');
+        if (container) container.appendChild(warning);
+    }
+    if (serverName.includes('hypixel')) warning.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Hypixel يدعم 1.8.9 فقط';
+    else if (serverName.includes('donutsmp.net')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم الإصدارات 1.21, 1.21.1, 1.21.2';
+    else if (serverName.includes('donut')) warning.innerHTML = '<i class="fas fa-info-circle"></i> DonutSMP يدعم 1.21';
+}
+
+function hideServerWarning() {
+    const w = document.getElementById('serverWarning');
+    if (w) w.remove();
 }
 
 function initCharts() {
@@ -365,7 +402,6 @@ function saveEditBot() {
     }).then(() => { closeEditModal(); loadBots(); });
 }
 
-// ========== دالة الكاميرا المعدلة ==========
 function openCameraViewer(botId) {
     window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
 }
