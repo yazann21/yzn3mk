@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - النسخة النهائية (المصادقة عبر سجلات البوت)
+// BOT CRAFT v6.0 - كامل مع إصلاح الكاميرا
 // ========================================
 
 let currentUser = null;
@@ -365,6 +365,7 @@ function saveEditBot() {
     }).then(() => { closeEditModal(); loadBots(); });
 }
 
+// ========== دالة الكاميرا المعدلة ==========
 function openCameraViewer(botId) {
     window.open(`/camera/${botId}`, '_blank', 'width=1200,height=800');
 }
@@ -379,7 +380,6 @@ function openLogs(id) {
             .then(res => res.json())
             .then(data => { 
                 document.getElementById('logsText').innerHTML = (data.logs || []).join('\n');
-                // إخفاء صندوق المصادقة القديم إن وُجد
                 const authBox = document.getElementById('authInfoBox');
                 if (authBox) authBox.style.display = 'none';
             })

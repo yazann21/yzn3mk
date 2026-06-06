@@ -5,8 +5,9 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, getBotCameraUrl, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
+const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, getBotViewerPort, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,36 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json());
+
+// ========== مسار الكاميرا (يجب أن يكون قبل static) ==========
+app.use('/camera/:botId', (req, res, next) => {
+  const botId = parseInt(req.params.botId);
+  const targetPort = getBotViewerPort(botId);
+  if (!targetPort) {
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
+      <body>
+        <h1>📷 كاميرا البوت</h1>
+        <p>البوت غير متصل أو الكاميرا لم تبدأ بعد.</p>
+        <p>تأكد من أن البوت قيد التشغيل وحاول مرة أخرى.</p>
+      </body>
+      </html>
+    `);
+  }
+  // إعادة توجيه الطلبات إلى المنفذ المحلي للبوت
+  const proxy = createProxyMiddleware({
+    target: `http://localhost:${targetPort}`,
+    changeOrigin: true,
+    ws: true,
+    pathRewrite: (path, req) => {
+      return path.replace(`/camera/${botId}`, '');
+    }
+  });
+  proxy(req, res, next);
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 app.use(session({
@@ -198,31 +229,6 @@ app.post('/api/clear-logs/:botId', (req, res) => {
     const logs = getBotLogs(parseInt(req.params.botId));
     if (logs) logs.length = 0;
     res.json({ success: true });
-});
-
-// ========== كاميرا المراقبة: إعادة توجيه إلى رابط ngrok العام ==========
-app.get('/camera/:botId', (req, res) => {
-    const botId = parseInt(req.params.botId);
-    const cameraUrl = getBotCameraUrl(botId);
-    if (cameraUrl) {
-        // إعادة توجيه مباشر إلى رابط ngrok العام
-        res.redirect(cameraUrl);
-    } else {
-        // إذا لم يتوفر رابط عام، عرض رسالة خطأ
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
-            <body>
-                <h1>📷 كاميرا البوت</h1>
-                <p>لم يتم الحصول على رابط الكاميرا العام بعد.</p>
-                <p>تأكد من أن البوت قيد التشغيل وأن متغير <code>NGROK_AUTHTOKEN</code> مضبوط في البيئة.</p>
-                <p>يمكنك أيضاً تجربة فتح السجلات للبحث عن رابط ngrok يدوياً.</p>
-                <button onclick="window.location.href='/bots'">العودة إلى البوتات</button>
-            </body>
-            </html>
-        `);
-    }
 });
 
 const server = app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

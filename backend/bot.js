@@ -158,25 +158,11 @@ function attackNearest() {
 async function startViewer() {
   if (viewerStarted) return;
   try {
-    const viewerPort = 8080 + parseInt(config.botId);
+    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
     mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
     viewerStarted = true;
     log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-
-    if (process.env.NGROK_AUTHTOKEN) {
-      const ngrok = require('@ngrok/ngrok');
-      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-      const listener = await ngrok.forward({
-        addr: viewerPort,
-        authtoken_from_env: true
-      });
-      const url = listener.url();
-      log(`🌍 كاميرا عامة عبر ngrok: ${url}`);
-      if (process.send) process.send({ type: 'log', message: `CAMERA_URL:${url}` });
-    } else {
-      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
-    }
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }

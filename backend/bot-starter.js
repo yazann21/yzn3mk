@@ -5,22 +5,20 @@ const botProcesses = new Map();
 const botLogs = new Map();
 const botStats = new Map();
 const botInventory = new Map();
-const botCameraUrls = new Map(); // تخزين رابط ngrok لكل بوت
-
-const VIEWER_BASE_PORT = 8080;
+const botViewerPorts = new Map();
 
 function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
-  // قتل أي عملية سابقة
   const existing = botProcesses.get(botId);
   if (existing) {
     console.log(`[Bot ${botId}] إنهاء العملية السابقة...`);
-    try { if (existing.connected) existing.send({ type: 'force_exit' }); } catch(e) {}
-    setTimeout(() => { try { process.kill(existing.pid, 'SIGKILL'); } catch(e) {} }, 500);
+    try { existing.kill('SIGTERM'); } catch(e) {}
     botProcesses.delete(botId);
-    botCameraUrls.delete(botId);
+    botViewerPorts.delete(botId);
   }
 
-  const envVars = {
+  const viewerPort = 8080 + parseInt(botId);
+  
+  const env = {
     ...process.env,
     BOT_ID: botId,
     MC_TOKEN: mcToken || '',
@@ -30,26 +28,27 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     BOT_TYPE: botType,
     TEAM_NAMES: teamNames,
     MC_VERSION: version,
+    VIEWER_PORT: viewerPort,
     AUTH_TYPE: authType,
     API_URL: process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`
   };
 
   const botProcess = spawn('node', [path.join(__dirname, 'bot.js')], {
-    env: envVars,
+    env,
     stdio: ['pipe', 'pipe', 'pipe', 'ipc']
   });
 
   const logs = [];
   botLogs.set(botId, logs);
 
-  botProcess.stdout.on('data', (d) => {
-    const msg = d.toString();
+  botProcess.stdout.on('data', (data) => {
+    const msg = data.toString();
     logs.push(msg);
     console.log(`[Bot ${botId}] ${msg}`);
   });
 
-  botProcess.stderr.on('data', (d) => {
-    const msg = d.toString();
+  botProcess.stderr.on('data', (data) => {
+    const msg = data.toString();
     logs.push(`ERROR: ${msg}`);
     console.error(`[Bot ${botId}] ${msg}`);
   });
@@ -58,95 +57,35 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     if (msg.type === 'log') logs.push(msg.message);
     if (msg.type === 'stats') botStats.set(botId, msg.stats);
     if (msg.type === 'inventory') botInventory.set(botId, msg.inventory);
-    if (msg.type === 'log' && typeof msg.message === 'string' && msg.message.startsWith('CAMERA_URL:')) {
-      const url = msg.message.replace('CAMERA_URL:', '');
-      if (url && url !== '') {
-        botCameraUrls.set(botId, url);
-        console.log(`[Bot ${botId}] تم استلام رابط الكاميرا العام: ${url}`);
-      }
-    }
   });
 
-  botProcess.on('exit', (code, signal) => {
-    console.log(`[Bot ${botId}] خرجت العملية برمز ${code} وإشارة ${signal}`);
+  botProcess.on('exit', () => {
     botProcesses.delete(botId);
-    botCameraUrls.delete(botId);
+    botViewerPorts.delete(botId);
   });
 
   botProcesses.set(botId, botProcess);
-  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started.`);
+  botViewerPorts.set(botId, viewerPort);
+  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started, camera on internal port ${viewerPort}`);
   return { process: botProcess, logs };
 }
 
 function stopBot(botId) {
   const p = botProcesses.get(botId);
   if (p) {
-    console.log(`[Bot ${botId}] طلب إيقاف (قطع اتصال نظيف)...`);
-    if (p.connected) try { p.send({ type: 'disconnect' }); } catch(e) {}
-    setTimeout(() => {
-      if (botProcesses.has(botId)) {
-        try { process.kill(p.pid, 'SIGKILL'); } catch(e) {}
-        botProcesses.delete(botId);
-        botCameraUrls.delete(botId);
-      }
-    }, 500);
+    p.kill('SIGTERM');
+    botProcesses.delete(botId);
+    botViewerPorts.delete(botId);
     return true;
   }
   return false;
 }
 
-function getBotCameraUrl(botId) {
-  return botCameraUrls.get(botId) || null;
-}
+function getBotLogs(botId) { return botLogs.get(botId) || []; }
+function getBotStats(botId) { return botStats.get(botId) || { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', level: 0, kills: 0, deaths: 0 }; }
+function getBotInventory(botId) { return botInventory.get(botId) || { inventory: [], helmet: 'فارغ', chest: 'فارغ', legs: 'فارغ', boots: 'فارغ', weapon: 'فارغ' }; }
+function getBotViewerPort(botId) { return botViewerPorts.get(botId) || null; }
+function deleteBot(botId) { stopBot(botId); return true; }
+function sendCommand(botId, command, extra = null) { const p = botProcesses.get(botId); if (p) p.send({ type: 'command', command, extra }); }
 
-function getBotLogs(botId) {
-  return botLogs.get(botId) || [];
-}
-
-function getBotStats(botId) {
-  return botStats.get(botId) || {
-    health: 20,
-    food: 20,
-    position: '0,0,0',
-    armor: 'لا يوجد',
-    weapon: 'لا يوجد',
-    level: 0,
-    kills: 0,
-    deaths: 0
-  };
-}
-
-function getBotInventory(botId) {
-  return botInventory.get(botId) || {
-    inventory: [],
-    helmet: 'فارغ',
-    chest: 'فارغ',
-    legs: 'فارغ',
-    boots: 'فارغ',
-    weapon: 'فارغ'
-  };
-}
-
-function deleteBot(botId) {
-  stopBot(botId);
-  return true;
-}
-
-function sendCommand(botId, command, extra = null) {
-  const p = botProcesses.get(botId);
-  if (p && p.connected) {
-    p.send({ type: 'command', command, extra });
-  }
-}
-
-module.exports = {
-  startBot,
-  stopBot,
-  getBotLogs,
-  getBotStats,
-  getBotInventory,
-  getBotCameraUrl,
-  sendCommand,
-  deleteBot,
-  botProcesses
-};
+module.exports = { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, getBotViewerPort, sendCommand, deleteBot, botProcesses };
