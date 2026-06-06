@@ -5,9 +5,8 @@ const SQLiteStore = require('connect-sqlite3')(session);
 const path = require('path');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, getBotViewerPort, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
+const { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses } = require('./bot-starter');
 const { getAuthUrl, getTokenFromCode, getMinecraftProfile } = require('./auth');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,36 +17,6 @@ app.use(cors({
     credentials: true
 }));
 app.use(express.json());
-
-// ========== مسار الكاميرا (يجب أن يكون قبل static) ==========
-app.use('/camera/:botId', (req, res, next) => {
-  const botId = parseInt(req.params.botId);
-  const targetPort = getBotViewerPort(botId);
-  if (!targetPort) {
-    return res.status(404).send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
-      <body>
-        <h1>📷 كاميرا البوت</h1>
-        <p>البوت غير متصل أو الكاميرا لم تبدأ بعد.</p>
-        <p>تأكد من أن البوت قيد التشغيل وحاول مرة أخرى.</p>
-      </body>
-      </html>
-    `);
-  }
-  // إعادة توجيه الطلبات إلى المنفذ المحلي للبوت
-  const proxy = createProxyMiddleware({
-    target: `http://localhost:${targetPort}`,
-    changeOrigin: true,
-    ws: true,
-    pathRewrite: (path, req) => {
-      return path.replace(`/camera/${botId}`, '');
-    }
-  });
-  proxy(req, res, next);
-});
-
 app.use(express.static(path.join(__dirname, '../frontend')));
 
 app.use(session({
@@ -67,6 +36,43 @@ const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
     db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, mc_username TEXT, mc_profile_id TEXT, auth_type TEXT DEFAULT 'offline', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
+});
+
+// ========== تخزين روابط الكاميرا لكل بوت ==========
+const botCameraUrls = new Map();
+
+// تسجيل رابط الكاميرا من البوت
+app.post('/api/register-camera-url', (req, res) => {
+    const { botId, url } = req.body;
+    if (botId && url) {
+        botCameraUrls.set(botId, url);
+        console.log(`✅ تم تسجيل رابط الكاميرا للبوت ${botId}: ${url}`);
+        res.json({ success: true });
+    } else {
+        res.status(400).json({ error: 'بيانات ناقصة' });
+    }
+});
+
+// مسار فتح الكاميرا – إعادة توجيه إلى رابط ngrok مع إضافة /view
+app.get('/camera/:botId', (req, res) => {
+    const botId = parseInt(req.params.botId);
+    const cameraUrl = botCameraUrls.get(botId);
+    if (cameraUrl) {
+        const targetUrl = cameraUrl.replace(/\/$/, '') + '/view';
+        res.redirect(targetUrl);
+    } else {
+        res.status(404).send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
+            <body>
+                <h1>📷 كاميرا البوت</h1>
+                <p>لم يتم الحصول على رابط الكاميرا العام بعد.</p>
+                <p>تأكد من أن البوت قيد التشغيل وأن متغير <code>NGROK_AUTHTOKEN</code> مضبوط في البيئة.</p>
+            </body>
+            </html>
+        `);
+    }
 });
 
 // ========== مصادقة المستخدم ==========
@@ -142,7 +148,6 @@ app.post('/api/save-bot-token', (req, res) => {
         });
 });
 
-// ========== تشغيل البوت ==========
 app.post('/api/start-cloud-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -161,7 +166,7 @@ app.post('/api/start-cloud-bot', (req, res) => {
     });
 });
 
-// ========== بقية مسارات التحكم ==========
+// ========== باقي مسارات التحكم ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
