@@ -163,6 +163,27 @@ async function startViewer() {
     mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
     viewerStarted = true;
     log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+
+    if (process.env.NGROK_AUTHTOKEN) {
+      const ngrok = require('@ngrok/ngrok');
+      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+      const listener = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
+      const publicUrl = listener.url();
+      log(`🌍 كاميرا عامة عبر ngrok: ${publicUrl}`);
+      
+      const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+      try {
+        await axios.post(`${apiUrl}/api/register-camera-url`, {
+          botId: config.botId,
+          url: publicUrl
+        });
+        log(`📤 تم إرسال رابط الكاميرا إلى الخادم الرئيسي`);
+      } catch (err) {
+        log(`⚠️ فشل إرسال الرابط: ${err.message}`);
+      }
+    } else {
+      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+    }
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }
