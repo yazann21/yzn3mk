@@ -53,15 +53,16 @@ app.post('/api/register-camera-url', (req, res) => {
     }
 });
 
-// مسار فتح الكاميرا – إعادة توجيه إلى رابط ngrok مع إضافة /view
 app.get('/camera/:botId', (req, res) => {
     const botId = parseInt(req.params.botId);
     const cameraUrl = botCameraUrls.get(botId);
     if (cameraUrl) {
-        const targetUrl = cameraUrl.replace(/\/$/, '') + '/view';
-        res.redirect(targetUrl);
+        // لا نضيف /view، نستخدم الرابط كما هو
+        res.redirect(cameraUrl);
     } else {
-        res.status(404).send(`
+        res.status(404).send(`...`);
+    }
+});
             <!DOCTYPE html>
             <html>
             <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
