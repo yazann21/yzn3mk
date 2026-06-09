@@ -22,7 +22,6 @@
     "prismarine-viewer": "^1.33.0",
     "connect-sqlite3": "^0.9.13",
     "sqlite3": "^5.1.6",
-    "canvas": "^3.0.0",
     "@ngrok/ngrok": "^1.7.0"
   }
 }

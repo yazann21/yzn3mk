@@ -16,11 +16,9 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     botViewerPorts.delete(botId);
   }
 
-  const viewerPort = 8080 + parseInt(botId);
-  
   const env = {
     ...process.env,
-    BOT_ID: botId,
+    BOT_ID: String(botId),
     MC_TOKEN: mcToken || '',
     BOT_USERNAME: mcUsername || botName,
     BOT_PROFILE_ID: mcProfileId || '',
@@ -28,9 +26,9 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     BOT_TYPE: botType,
     TEAM_NAMES: teamNames,
     MC_VERSION: version,
-    VIEWER_PORT: viewerPort,
     AUTH_TYPE: authType,
-    API_URL: process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`
+    API_URL: process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`,
+    NGROK_AUTHTOKEN: process.env.NGROK_AUTHTOKEN || '',
   };
 
   const botProcess = spawn('node', [path.join(__dirname, 'bot.js')], {
@@ -65,27 +63,20 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
   });
 
   botProcesses.set(botId, botProcess);
-  botViewerPorts.set(botId, viewerPort);
-  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started, camera on internal port ${viewerPort}`);
+  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started`);
   return { process: botProcess, logs };
 }
 
 function stopBot(botId) {
   const p = botProcesses.get(botId);
-  if (p) {
-    p.kill('SIGTERM');
-    botProcesses.delete(botId);
-    botViewerPorts.delete(botId);
-    return true;
-  }
+  if (p) { p.kill('SIGTERM'); botProcesses.delete(botId); return true; }
   return false;
 }
 
 function getBotLogs(botId) { return botLogs.get(botId) || []; }
 function getBotStats(botId) { return botStats.get(botId) || { health: 20, food: 20, position: '0,0,0', armor: 'لا يوجد', weapon: 'لا يوجد', level: 0, kills: 0, deaths: 0 }; }
 function getBotInventory(botId) { return botInventory.get(botId) || { inventory: [], helmet: 'فارغ', chest: 'فارغ', legs: 'فارغ', boots: 'فارغ', weapon: 'فارغ' }; }
-function getBotViewerPort(botId) { return botViewerPorts.get(botId) || null; }
 function deleteBot(botId) { stopBot(botId); return true; }
 function sendCommand(botId, command, extra = null) { const p = botProcesses.get(botId); if (p) p.send({ type: 'command', command, extra }); }
 
-module.exports = { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, getBotViewerPort, sendCommand, deleteBot, botProcesses };
+module.exports = { startBot, stopBot, getBotLogs, getBotStats, getBotInventory, sendCommand, deleteBot, botProcesses };

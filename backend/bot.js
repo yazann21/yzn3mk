@@ -15,7 +15,7 @@ let teamList = [];
 let killCount = 0;
 let deathCount = 0;
 let isDisconnecting = false;
-let isEating = false; // 🔒 قفل لمنع تكرار الأكل
+let isEating = false;
 
 const args = process.argv.slice(2);
 const config = {
@@ -104,8 +104,10 @@ function equipEverythingFast() {
     }
     const weapon = getBestWeapon();
     if (weapon) bot.equip(weapon, 'hand');
-    const totem = bot.inventory.items().find(i => i.name.includes('totem'));
-    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) bot.equip(totem, 'off-hand');
+    if (bot.inventory.slots[45]) {
+      const totem = bot.inventory.items().find(i => i.name.includes('totem'));
+      if (totem) bot.equip(totem, 'off-hand');
+    }
   } catch (err) {}
 }
 
@@ -156,35 +158,46 @@ function attackNearest() {
   }
 }
 
+// ================= تعديل الكاميرا: استخدام ngrok على منفذ عشوائي =================
 async function startViewer() {
   if (viewerStarted) return;
   try {
-    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
-    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
-    viewerStarted = true;
-    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-
-    if (process.env.NGROK_AUTHTOKEN) {
-      const ngrok = require('@ngrok/ngrok');
-      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-      const listener = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
-      const publicUrl = listener.url();
-      log(`🌍 كاميرا عامة عبر ngrok: ${publicUrl}`);
-      
-      const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
-      try {
-        await axios.post(`${apiUrl}/api/register-camera-url`, {
-          botId: config.botId,
-          url: publicUrl
-        });
-        log(`📤 تم إرسال رابط الكاميرا إلى الخادم الرئيسي`);
-      } catch (err) {
-        log(`⚠️ فشل إرسال الرابط: ${err.message}`);
-      }
-    } else {
-      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+    const ngrok = require('@ngrok/ngrok');
+    if (!process.env.NGROK_AUTHTOKEN) {
+      log(`⚠️ NGROK_AUTHTOKEN غير مضبوط، الكاميرا لن تعمل على السحابة.`);
+      return;
     }
+    await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+
+    // إنشاء خادم HTTP مؤقت على منفذ عشوائي
+    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+    const http = require('http');
+    const server = http.createServer();
+    const viewerPort = await new Promise((resolve, reject) => {
+      server.listen(0, '0.0.0.0', () => resolve(server.address().port));
+      server.on('error', reject);
+    });
+    server.close(); // نغلقه بعد الحصول على المنفذ، لأن mineflayerViewer سيفتح خادماً جديداً
+    // تشغيل المشاهد على ذلك المنفذ
+    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
+    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+    
+    const listener = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
+    const publicUrl = listener.url();
+    log(`🌍 كاميرا عامة عبر ngrok: ${publicUrl}/view`);
+    
+    // إرسال الرابط إلى الخادم الرئيسي
+    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+    try {
+      await axios.post(`${apiUrl}/api/register-camera-url`, {
+        botId: config.botId,
+        url: publicUrl
+      });
+      log(`📤 تم إرسال رابط الكاميرا إلى الخادم الرئيسي`);
+    } catch (err) {
+      log(`⚠️ فشل إرسال الرابط: ${err.message}`);
+    }
+    viewerStarted = true;
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }
@@ -206,7 +219,7 @@ async function authenticateBot() {
   });
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
-    log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
+    log(`✅ تم الحصول على التوكن: ${tokenResult.profile.name}`);
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
     try {
       await axios.post(`${apiUrl}/api/save-bot-token`, {
@@ -218,7 +231,7 @@ async function authenticateBot() {
       log(`💾 تم حفظ التوكن في قاعدة البيانات`);
       return tokenResult;
     } catch (err) {
-      log(`❌ فشل حفظ التوكن على الخادم: ${err.message}`);
+      log(`❌ فشل حفظ التوكن: ${err.message}`);
       throw err;
     }
   } else {
@@ -245,7 +258,6 @@ async function createBot() {
       config.profileId = tokenData.profile.id;
     } catch (err) {
       log(`❌ فشل المصادقة: ${err.message}`);
-      log(`❌ لن يتم تشغيل البوت بدون توكن صالح.`);
       process.exit(1);
     }
   }
@@ -281,32 +293,26 @@ async function createBot() {
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
     
-    // الأكل التلقائي مع قفل وإعادة تعيين مضمون
-let isEating = false;
-
-setInterval(() => {
-  if (!bot || !bot.entity || bot.health <= 0) return;
-  if (isEating) return;
-  
-  if (bot.food < 18 && bot.food > 0) {
-    const food = bot.inventory.items().find(i => 
-      i.name.includes('bread') || i.name.includes('apple') || 
-      i.name.includes('cooked') || i.name.includes('steak') || 
-      i.name.includes('golden_apple')
-    );
-    if (food) {
-      isEating = true;
-      bot.equip(food, 'hand')
-        .then(() => bot.consume())
-        .then(() => log(`🍎 أكل ${food.name}`))
-        .catch(err => log(`⚠️ فشل الأكل: ${err.message}`))
-        .finally(() => {
-          // تحرير القفل بعد تأخير قصير لتجنب التكرار السريع
-          setTimeout(() => { isEating = false; }, 1000);
-        });
-    }
-  }
-}, 5000);
+    // الأكل التلقائي
+    setInterval(() => {
+      if (!bot || !bot.entity || bot.health <= 0) return;
+      if (isEating) return;
+      if (bot.food < 18 && bot.food > 0) {
+        const food = bot.inventory.items().find(i => 
+          i.name.includes('bread') || i.name.includes('apple') || 
+          i.name.includes('cooked') || i.name.includes('steak') || 
+          i.name.includes('golden_apple')
+        );
+        if (food) {
+          isEating = true;
+          bot.equip(food, 'hand')
+            .then(() => bot.consume())
+            .then(() => log(`🍎 أكل ${food.name}`))
+            .catch(err => log(`⚠️ فشل الأكل: ${err.message}`))
+            .finally(() => setTimeout(() => { isEating = false; }, 1000));
+        }
+      }
+    }, 5000);
     
     if (!viewerStarted) await startViewer();
     
@@ -352,9 +358,7 @@ setInterval(() => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
     viewerStarted = false;
-    if (isDisconnecting) {
-      process.exit(0);
-    }
+    if (isDisconnecting) process.exit(0);
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
@@ -362,38 +366,25 @@ setInterval(() => {
 
 process.on('message', (msg) => {
   if (msg && msg.type === 'disconnect') {
-    log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
+    log(`📢 استلام أمر قطع الاتصال.`);
     if (bot && !isDisconnecting) {
       isDisconnecting = true;
       bot.end();
       setTimeout(() => process.exit(0), 500);
-    } else {
-      process.exit(0);
-    }
+    } else process.exit(0);
   } else if (msg && msg.type === 'force_exit') {
-    log(`📢 أمر إنهاء فوري (غير نظيف).`);
+    log(`📢 أمر إنهاء فوري.`);
     process.exit(0);
   }
 });
 
 process.on('SIGINT', () => {
-  if (bot && !isDisconnecting) {
-    isDisconnecting = true;
-    bot.end();
-    setTimeout(() => process.exit(0), 500);
-  } else {
-    process.exit(0);
-  }
+  if (bot && !isDisconnecting) { isDisconnecting = true; bot.end(); setTimeout(() => process.exit(0), 500); }
+  else process.exit(0);
 });
-
 process.on('SIGTERM', () => {
-  if (bot && !isDisconnecting) {
-    isDisconnecting = true;
-    bot.end();
-    setTimeout(() => process.exit(0), 500);
-  } else {
-    process.exit(0);
-  }
+  if (bot && !isDisconnecting) { isDisconnecting = true; bot.end(); setTimeout(() => process.exit(0), 500); }
+  else process.exit(0);
 });
 
 createBot();
