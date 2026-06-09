@@ -53,16 +53,15 @@ app.post('/api/register-camera-url', (req, res) => {
     }
 });
 
+// مسار فتح الكاميرا – إعادة توجيه إلى رابط ngrok (بدون إضافة /view إضافية)
 app.get('/camera/:botId', (req, res) => {
     const botId = parseInt(req.params.botId);
     const cameraUrl = botCameraUrls.get(botId);
     if (cameraUrl) {
-        // لا نضيف /view، نستخدم الرابط كما هو
+        // نستخدم الرابط كما هو (ngrok يعطيه مع /view بالفعل)
         res.redirect(cameraUrl);
     } else {
-        res.status(404).send(`...`);
-    }
-});
+        res.status(404).send(`
             <!DOCTYPE html>
             <html>
             <head><title>كاميرا البوت</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#0a0a1a;color:white;}</style></head>
@@ -76,10 +75,7 @@ app.get('/camera/:botId', (req, res) => {
     }
 });
 
-// ========== باقي الكود كما هو (مصادقة، إدارة البوتات، إلخ) ==========
-// (لن أكرر كل شيء، ولكني سأضع الروابط الأساسية. أنت تملك النسخة الكاملة بالفعل.
-// سأكتب فقط ما هو ضروري، ويمكنك إلحاق ما تبقى من ملفك القديم هنا)
-
+// ========== مصادقة المستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -117,6 +113,7 @@ app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
+// ========== إدارة البوتات ==========
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -140,6 +137,7 @@ app.post('/api/save-bot-token', (req, res) => {
     db.run(`UPDATE bots SET mc_token = ?, mc_username = ?, mc_profile_id = ? WHERE id = ?`,
         [mcToken, mcUsername, mcProfileId, botId], function(err) {
             if (err) return res.status(500).json({ error: err.message });
+            console.log(`✅ تم حفظ توكن البوت ${botId} (${mcUsername})`);
             res.json({ success: true });
         });
 });
@@ -163,7 +161,9 @@ app.post('/api/stop-bot', (req, res) => {
     if (stopBot(parseInt(botId))) {
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['stopped', botId]);
         res.json({ success: true });
-    } else res.json({ success: false });
+    } else {
+        res.json({ success: false });
+    }
 });
 
 app.delete('/api/delete-bot', (req, res) => {
@@ -209,8 +209,10 @@ app.post('/api/restart-bot', (req, res) => {
     stopBot(parseInt(botId));
     setTimeout(() => {
         db.get('SELECT * FROM bots WHERE id = ?', [botId], (err, bot) => {
-            if (bot) startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version, bot.auth_type);
-            db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+            if (bot) {
+                startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version, bot.auth_type);
+                db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
+            }
         });
     }, 1000);
     res.json({ success: true });
