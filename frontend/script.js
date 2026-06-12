@@ -25,7 +25,7 @@ const allVersions = [
 
 const specialServerVersions = {
     'hypixel.net': '1.8.9',
-    'donut': '1.21.10'
+    'donut': '1.21.1'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
