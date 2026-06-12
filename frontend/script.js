@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع تعديل إصدارات donutsmp.net
+// BOT CRAFT v6.0 - كامل مع تعديل إصدارات donutsmp.net وتحديث التعديل
 // ========================================
 
 let currentUser = null;
@@ -23,10 +23,9 @@ const allVersions = [
     '1.11.2', '1.11.1', '1.11', '1.10.2', '1.10.1', '1.10', '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9', '1.8.9', '1.8.8'
 ];
 
-// إصدارات خاصة ببعض السيرفرات (تم إزالة donutsmp.net من هنا لأنه سيتم معالجته بشكل منفصل)
 const specialServerVersions = {
     'hypixel.net': '1.8.9',
-    'donut': '1.21.10'   // أي سيرفر يحتوي على "donut" (غير donutsmp.net) سيأخذ هذا الإصدار
+    'donut': '1.21.10'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -141,22 +140,20 @@ function navigateTo(page) {
     if (page === 'analytics') loadAnalytics();
 }
 
-// دالة تحديث الإصدارات حسب السيرفر (تم تعديلها لـ donutsmp.net)
+// دالة تحديث الإصدارات حسب السيرفر (لنافذة الإنشاء)
 function updateVersionsForServer(serverIp, selectId) {
     const serverLower = serverIp.toLowerCase();
     const versionSelect = document.getElementById(selectId);
     if (!versionSelect) return;
 
-    // معالجة خاصة لـ donutsmp.net (يظهر فقط 1.21, 1.21.1, 1.21.2)
     if (serverLower.includes('donutsmp.net')) {
         const donutVersions = ['1.21', '1.21.1', '1.21.2'];
         versionSelect.innerHTML = donutVersions.map(v => `<option value="${v}">${v}</option>`).join('');
-        versionSelect.value = '1.21'; // الإصدار الافتراضي
+        versionSelect.value = '1.21';
         showServerWarning(serverLower);
         return;
     }
 
-    // معالجة باقي السيرفرات الخاصة (مثل hypixel)
     for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
         if (serverLower.includes(key)) {
             versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion}</option>`;
@@ -165,9 +162,31 @@ function updateVersionsForServer(serverIp, selectId) {
         }
     }
 
-    // السيرفرات العادية: تعرض كل الإصدارات
     versionSelect.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join('');
     hideServerWarning();
+}
+
+// دالة تحديث الإصدارات في نافذة التعديل
+function updateVersionsForServerInEdit(serverIp) {
+    const serverLower = serverIp.toLowerCase();
+    const versionSelect = document.getElementById('editVersion');
+    if (!versionSelect) return;
+
+    if (serverLower.includes('donutsmp.net')) {
+        const donutVersions = ['1.21', '1.21.1', '1.21.2'];
+        versionSelect.innerHTML = donutVersions.map(v => `<option value="${v}">${v}</option>`).join('');
+        versionSelect.value = '1.21';
+        return;
+    }
+
+    for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
+        if (serverLower.includes(key)) {
+            versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion}</option>`;
+            return;
+        }
+    }
+
+    versionSelect.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join('');
 }
 
 function showServerWarning(serverName) {
@@ -323,7 +342,7 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
         if (authType === 'microsoft') {
             alert(`✅ تم إنشاء البوت (حساب حقيقي).\nعند الضغط على "تشغيل" سيقوم البوت بطلب مصادقة مايكروسوفت.\nافتح سجلات البوت (زر "سجلات") لرؤية الرابط والرمز.`);
         } else {
-            alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
+            alert(`✅ تم إنشاء البوت.`);
         }
         navigateTo('bots');
         loadBots();
@@ -370,6 +389,7 @@ function deleteBot(id) {
     }
 }
 
+// ========== تعديل البوت (مع دعم تحديث الإصدارات حسب السيرفر) ==========
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
@@ -378,9 +398,26 @@ function openEditModal(id) {
     document.getElementById('editBotType').value = bot.bot_type;
     document.getElementById('editServerIp').value = bot.server_ip;
     document.getElementById('editTeamNames').value = bot.team_names || '';
-    document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
+    
+    // تحديث قائمة الإصدارات بناءً على عنوان السيرفر
+    updateVersionsForServerInEdit(bot.server_ip);
+    // محاولة تحديد الإصدار المخزن مسبقاً إن كان متوافقاً
+    if (bot.version) {
+        const optionExists = Array.from(document.getElementById('editVersion').options).some(opt => opt.value === bot.version);
+        if (optionExists) document.getElementById('editVersion').value = bot.version;
+        else document.getElementById('editVersion').value = document.getElementById('editVersion').options[0]?.value || '1.21.10';
+    }
+    
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
     document.getElementById('editModal').style.display = 'flex';
+    
+    // إضافة مستمع لتغيير عنوان السيرفر في نافذة التعديل
+    const serverIpInput = document.getElementById('editServerIp');
+    // إزالة المستمع القديم إن وجد
+    if (serverIpInput._listener) serverIpInput.removeEventListener('input', serverIpInput._listener);
+    const handler = () => updateVersionsForServerInEdit(serverIpInput.value);
+    serverIpInput.addEventListener('input', handler);
+    serverIpInput._listener = handler;
 }
 
 function closeEditModal() {
@@ -592,7 +629,7 @@ populateVersions('editVersion');
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
-window.closeCameraModal = closeCameraModal;
+window.closeCameraModal = closeCameraModal; // قد تكون غير معرفة لكنها موجودة في HTML
 window.sendCommand = sendCommand;
 window.sendChatMessage = sendChatMessage;
 window.refreshInventory = refreshInventory;
