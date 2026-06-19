@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع وضع البياع
+// BOT CRAFT v6.0 - كامل مع وضع البياع وأمر البيع المخصص
 // ========================================
 
 let currentUser = null;
@@ -23,13 +23,11 @@ const allVersions = [
     '1.11.2', '1.11.1', '1.11', '1.10.2', '1.10.1', '1.10', '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9', '1.8.9', '1.8.8'
 ];
 
-// إصدارات خاصة ببعض السيرفرات
 const specialServerVersions = {
     'hypixel.net': '1.8.9',
     'donut': '1.21.10'
 };
 
-// دالة لملء قائمة أنواع البوتات (تُستخدم في الإنشاء والتعديل)
 function populateBotTypes(selectId) {
     const select = document.getElementById(selectId);
     if (!select) return;
@@ -323,6 +321,7 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
     const serverIp = document.getElementById('createServerIp').value;
     const version = document.getElementById('createVersion').value;
     const authType = document.querySelector('input[name="authType"]:checked').value;
+    const sellCommand = document.getElementById('createSellCommand').value || '/sell';
     
     const submitBtn = document.querySelector('#createBotForm button[type="submit"]');
     const originalText = submitBtn.innerHTML;
@@ -334,7 +333,10 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ botName, botType, serverIp, teamNames: '', version, authType })
+            body: JSON.stringify({ 
+                botName, botType, serverIp, teamNames: '', version, authType,
+                sellCommand: sellCommand
+            })
         });
         const data = await response.json();
         if (data.error) {
@@ -401,6 +403,7 @@ function openEditModal(id) {
     document.getElementById('editTeamNames').value = bot.team_names || '';
     document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
+    document.getElementById('editSellCommand').value = bot.sell_command || '/sell';
     document.getElementById('editModal').style.display = 'flex';
 }
 
@@ -415,11 +418,15 @@ function saveEditBot() {
     const serverIp = document.getElementById('editServerIp').value;
     const teamNames = document.getElementById('editTeamNames').value;
     const version = document.getElementById('editVersion').value;
+    const sellCommand = document.getElementById('editSellCommand').value || '/sell';
     fetch('/api/update-bot', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ botId, botName, botType, serverIp, teamNames, version })
+        body: JSON.stringify({ 
+            botId, botName, botType, serverIp, teamNames, version,
+            sellCommand: sellCommand
+        })
     }).then(() => { closeEditModal(); loadBots(); });
 }
 

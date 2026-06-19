@@ -104,10 +104,8 @@ function equipEverythingFast() {
     }
     const weapon = getBestWeapon();
     if (weapon) bot.equip(weapon, 'hand');
-    if (bot.inventory.slots[45]) {
-      const totem = bot.inventory.items().find(i => i.name.includes('totem'));
-      if (totem) bot.equip(totem, 'off-hand');
-    }
+    const totem = bot.inventory.items().find(i => i.name.includes('totem'));
+    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) bot.equip(totem, 'off-hand');
   } catch (err) {}
 }
 
@@ -158,46 +156,35 @@ function attackNearest() {
   }
 }
 
-// ================= تعديل الكاميرا: استخدام ngrok على منفذ عشوائي =================
 async function startViewer() {
   if (viewerStarted) return;
   try {
-    const ngrok = require('@ngrok/ngrok');
-    if (!process.env.NGROK_AUTHTOKEN) {
-      log(`⚠️ NGROK_AUTHTOKEN غير مضبوط، الكاميرا لن تعمل على السحابة.`);
-      return;
-    }
-    await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-
-    // إنشاء خادم HTTP مؤقت على منفذ عشوائي
+    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
     const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    const http = require('http');
-    const server = http.createServer();
-    const viewerPort = await new Promise((resolve, reject) => {
-      server.listen(0, '0.0.0.0', () => resolve(server.address().port));
-      server.on('error', reject);
-    });
-    server.close(); // نغلقه بعد الحصول على المنفذ، لأن mineflayerViewer سيفتح خادماً جديداً
-    // تشغيل المشاهد على ذلك المنفذ
     mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
-    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-    
-    const listener = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
-    const publicUrl = listener.url();
-    log(`🌍 كاميرا عامة عبر ngrok: ${publicUrl}/view`);
-    
-    // إرسال الرابط إلى الخادم الرئيسي
-    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
-    try {
-      await axios.post(`${apiUrl}/api/register-camera-url`, {
-        botId: config.botId,
-        url: publicUrl
-      });
-      log(`📤 تم إرسال رابط الكاميرا إلى الخادم الرئيسي`);
-    } catch (err) {
-      log(`⚠️ فشل إرسال الرابط: ${err.message}`);
-    }
     viewerStarted = true;
+    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+
+    if (process.env.NGROK_AUTHTOKEN) {
+      const ngrok = require('@ngrok/ngrok');
+      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
+      const listener = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
+      const publicUrl = listener.url();
+      log(`🌍 كاميرا عامة عبر ngrok: ${publicUrl}`);
+      
+      const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+      try {
+        await axios.post(`${apiUrl}/api/register-camera-url`, {
+          botId: config.botId,
+          url: publicUrl
+        });
+        log(`📤 تم إرسال رابط الكاميرا إلى الخادم الرئيسي`);
+      } catch (err) {
+        log(`⚠️ فشل إرسال الرابط: ${err.message}`);
+      }
+    } else {
+      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
+    }
   } catch (err) {
     log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }
@@ -219,7 +206,7 @@ async function authenticateBot() {
   });
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
-    log(`✅ تم الحصول على التوكن: ${tokenResult.profile.name}`);
+    log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
     try {
       await axios.post(`${apiUrl}/api/save-bot-token`, {
@@ -231,7 +218,7 @@ async function authenticateBot() {
       log(`💾 تم حفظ التوكن في قاعدة البيانات`);
       return tokenResult;
     } catch (err) {
-      log(`❌ فشل حفظ التوكن: ${err.message}`);
+      log(`❌ فشل حفظ التوكن على الخادم: ${err.message}`);
       throw err;
     }
   } else {
@@ -249,6 +236,9 @@ function cleanup() {
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
   
+  log(`📌 [DEBUG] نوع البوت المستلم: ${config.botType}`);
+  log(`📌 [DEBUG] نوع المصادقة: ${authType}`);
+  
   if (authType === 'microsoft' && (!config.minecraftToken || config.minecraftToken === '')) {
     log(`⚠️ البوت من نوع "حساب حقيقي" لكن لا يوجد توكن مخزن. سيتم بدء المصادقة...`);
     try {
@@ -258,6 +248,7 @@ async function createBot() {
       config.profileId = tokenData.profile.id;
     } catch (err) {
       log(`❌ فشل المصادقة: ${err.message}`);
+      log(`❌ لن يتم تشغيل البوت بدون توكن صالح.`);
       process.exit(1);
     }
   }
@@ -288,6 +279,7 @@ async function createBot() {
   
   bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
+    
     setTimeout(() => equipEverythingFast(), 100);
     setInterval(() => equipEverythingFast(), 1000);
     setInterval(() => updateStats(), 1000);
@@ -298,24 +290,93 @@ async function createBot() {
       if (!bot || !bot.entity || bot.health <= 0) return;
       if (isEating) return;
       if (bot.food < 18 && bot.food > 0) {
-        const food = bot.inventory.items().find(i => 
-          i.name.includes('bread') || i.name.includes('apple') || 
-          i.name.includes('cooked') || i.name.includes('steak') || 
-          i.name.includes('golden_apple')
-        );
+        const food = bot.inventory.items().find(i => i.name.includes('bread') || i.name.includes('apple') || i.name.includes('cooked') || i.name.includes('steak') || i.name.includes('golden_apple'));
         if (food) {
           isEating = true;
-          bot.equip(food, 'hand')
-            .then(() => bot.consume())
-            .then(() => log(`🍎 أكل ${food.name}`))
-            .catch(err => log(`⚠️ فشل الأكل: ${err.message}`))
-            .finally(() => setTimeout(() => { isEating = false; }, 1000));
+          bot.equip(food, 'hand').then(() => {
+            bot.consume().catch(err => {
+              log(`⚠️ فشل الأكل: ${err.message}`);
+            }).finally(() => {
+              setTimeout(() => { isEating = false; }, 1000);
+            });
+          }).catch(err => {
+            log(`⚠️ فشل تجهيز الطعام: ${err.message}`);
+            isEating = false;
+          });
+          log(`🍴 بدأ أكل ${food.name}`);
         }
       }
     }, 5000);
     
     if (!viewerStarted) await startViewer();
+
+    // ========== وضع البياع (SELLER MODE) ==========
+    if (config.botType === 'seller') {
+      const sellCmd = process.env.SELL_COMMAND || '/sell';
+      log(`🛒 ===== بدء وضع البياع ====`);
+      log(`🛒 نوع البوت: ${config.botType}`);
+      log(`🛒 الأمر المستخدم: ${sellCmd}`);
+      log(`🛒 سيتم كتابة الأمر بعد 3 ثوانٍ`);
+      
+      setTimeout(() => {
+        log(`💬 كتابة الأمر ${sellCmd} إلى السيرفر`);
+        bot.chat(sellCmd);
+        log(`✅ تم إرسال الأمر ${sellCmd}`);
+      }, 3000);
+
+      bot.on('windowOpen', (window) => {
+        log(`📦 ===== تم فتح نافذة ====`);
+        log(`📦 عنوان النافذة: ${window.title}`);
+        log(`📦 عدد السلوتات: ${window.slots.length}`);
+        
+        const items = [];
+        for (let i = 0; i < window.slots.length; i++) {
+          const slot = window.slots[i];
+          if (slot) {
+            items.push({
+              name: slot.name,
+              count: slot.count,
+              slot: i
+            });
+            log(`📦 سلوت ${i}: ${slot.name} × ${slot.count}`);
+          }
+        }
+
+        if (items.length === 0) {
+          log(`⚠️ لا توجد أغراض في النافذة.`);
+        } else {
+          log(`📋 ===== تم العثور على ${items.length} غرض/أغراض =====`);
+          items.forEach((item, index) => {
+            log(`   ${index+1}. ${item.name} × ${item.count} (سلوت ${item.slot})`);
+          });
+
+          const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+          axios.post(`${apiUrl}/api/seller-items`, {
+            botId: config.botId,
+            items: items
+          }).then(() => {
+            log(`✅ تم إرسال القائمة إلى الخادم الرئيسي بنجاح`);
+          }).catch(err => {
+            log(`⚠️ فشل إرسال القائمة: ${err.message}`);
+          });
+        }
+
+        setTimeout(() => {
+          log(`🚪 إغلاق النافذة (محاكاة ESC)`);
+          bot.closeWindow(window);
+          log(`✅ تم إغلاق النافذة`);
+        }, 2000);
+      });
+      
+      bot.on('message', (message) => {
+        const msg = message.toString().trim();
+        log(`💬 رسالة من السيرفر: ${msg}`);
+      });
+      
+      log(`🛒 ===== تم إعداد وضع البياع بنجاح ====`);
+    }
     
+    // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     } else if (config.botType === 'hunter') {
@@ -358,7 +419,9 @@ async function createBot() {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
     viewerStarted = false;
-    if (isDisconnecting) process.exit(0);
+    if (isDisconnecting) {
+      process.exit(0);
+    }
   });
   
   bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
@@ -366,25 +429,38 @@ async function createBot() {
 
 process.on('message', (msg) => {
   if (msg && msg.type === 'disconnect') {
-    log(`📢 استلام أمر قطع الاتصال.`);
+    log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
     if (bot && !isDisconnecting) {
       isDisconnecting = true;
       bot.end();
       setTimeout(() => process.exit(0), 500);
-    } else process.exit(0);
+    } else {
+      process.exit(0);
+    }
   } else if (msg && msg.type === 'force_exit') {
-    log(`📢 أمر إنهاء فوري.`);
+    log(`📢 أمر إنهاء فوري (غير نظيف).`);
     process.exit(0);
   }
 });
 
 process.on('SIGINT', () => {
-  if (bot && !isDisconnecting) { isDisconnecting = true; bot.end(); setTimeout(() => process.exit(0), 500); }
-  else process.exit(0);
+  if (bot && !isDisconnecting) {
+    isDisconnecting = true;
+    bot.end();
+    setTimeout(() => process.exit(0), 500);
+  } else {
+    process.exit(0);
+  }
 });
+
 process.on('SIGTERM', () => {
-  if (bot && !isDisconnecting) { isDisconnecting = true; bot.end(); setTimeout(() => process.exit(0), 500); }
-  else process.exit(0);
+  if (bot && !isDisconnecting) {
+    isDisconnecting = true;
+    bot.end();
+    setTimeout(() => process.exit(0), 500);
+  } else {
+    process.exit(0);
+  }
 });
 
 createBot();
