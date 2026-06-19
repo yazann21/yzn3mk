@@ -33,7 +33,6 @@ const specialServerVersions = {
 function populateBotTypes(selectId) {
     const select = document.getElementById(selectId);
     if (!select) return;
-    // حفظ القيمة المحددة حاليًا إن وجدت
     const currentValue = select.value;
     const types = [
         { value: 'afk', label: '😴 مأفك - يدافع عن نفسه' },
