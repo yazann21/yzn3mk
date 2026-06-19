@@ -311,21 +311,18 @@ async function createBot() {
     if (!viewerStarted) await startViewer();
 
     // ========== وضع البياع (SELLER MODE) ==========
- if (config.botType === 'seller') {
-  const sellCmd = process.env.SELL_COMMAND || '/sell';
-  log(`🛒 ===== بدء وضع البياع ====`);
-  log(`🛒 نوع البوت: ${config.botType}`);
-  log(`🛒 الأمر المستخدم: ${sellCmd}`);
-  log(`🛒 سيتم كتابة الأمر بعد 3 ثوانٍ`);
-  
-  setTimeout(() => {
-    log(`💬 كتابة الأمر ${sellCmd} إلى السيرفر`);
-    bot.chat(sellCmd);
-    log(`✅ تم إرسال الأمر ${sellCmd}`);
-  }, 3000);
-
-  // ... باقي الكود (windowOpen, message) كما هو
-}
+    if (config.botType === 'seller') {
+      const sellCmd = process.env.SELL_COMMAND || '/sell';
+      log(`🛒 ===== بدء وضع البياع ====`);
+      log(`🛒 نوع البوت: ${config.botType}`);
+      log(`🛒 الأمر المستخدم: ${sellCmd}`);
+      log(`🛒 سيتم كتابة الأمر بعد 3 ثوانٍ`);
+      
+      setTimeout(() => {
+        log(`💬 كتابة الأمر ${sellCmd} إلى السيرفر`);
+        bot.chat(sellCmd);
+        log(`✅ تم إرسال الأمر ${sellCmd}`);
+      }, 3000);
 
       bot.on('windowOpen', (window) => {
         log(`📦 ===== تم فتح نافذة ====`);

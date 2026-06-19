@@ -1,5 +1,6 @@
 /* ========================================
-   BOT CRAFT - التصميم النهائي (مع خيارات المصادقة العمودية)
+   BOT CRAFT - PROFESSIONAL MINECRAFT BOT CONTROLLER
+   التصميم النهائي
    ======================================== */
 
 * {
@@ -604,56 +605,6 @@ body {
 .input-group.floating input:focus ~ .input-border,
 .input-group.floating select:focus ~ .input-border { width: 100%; }
 
-/* ========================================
-   خيارات المصادقة - عمودية وواضحة (الحل النهائي)
-   ======================================== */
-.auth-section {
-    margin: 15px 0 25px 0;
-    padding: 10px 0;
-    border-top: 1px solid var(--glass-border);
-    border-bottom: 1px solid var(--glass-border);
-}
-.auth-label {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 12px;
-}
-.auth-options {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: 100%;
-}
-.auth-option {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    padding: 12px 16px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: 1px solid transparent;
-}
-.auth-option:hover {
-    background: rgba(124, 58, 237, 0.1);
-    border-color: var(--primary-light);
-    transform: translateX(4px);
-}
-.auth-option input {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--primary);
-}
-.auth-option span {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
 .btn-submit-glow {
     width: 100%;
     background: linear-gradient(135deg, var(--primary), var(--primary-light));
@@ -964,6 +915,54 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
 .inv-slot.selected { background: var(--primary); border-color: white; }
 .armor-stats { display: flex; gap: 16px; flex-wrap: wrap; background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 12px; margin-bottom: 16px; }
 
+/* ===== خيارات الحسابات العمودية ===== */
+.auth-options-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 0;
+    width: 100%;
+}
+.auth-option-vertical {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 12px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+.auth-option-vertical:hover {
+    background: rgba(124, 58, 237, 0.12);
+    transform: translateX(4px);
+}
+.auth-option-vertical input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary);
+    flex-shrink: 0;
+}
+.auth-option-vertical span {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+@media (max-width: 600px) {
+    .auth-options-vertical {
+        gap: 8px;
+    }
+    .auth-option-vertical {
+        padding: 10px 12px;
+    }
+    .auth-option-vertical span {
+        font-size: 14px;
+    }
+}
+
 @media (max-width: 1024px) {
     .glass-sidebar { width: 260px; }
     .main-content { margin-left: 260px; padding: 20px; }
@@ -992,171 +991,4 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .login-features { flex-direction: column; align-items: center; gap: 10px; }
     .bot-card { padding: 15px; }
     .inventory-grid { grid-template-columns: repeat(4, 1fr); }
-}
-/* خيارات الحسابات العمودية (تحت بعض) */
-.auth-options-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 10px 0;
-    width: 100%;
-}
-.auth-option-vertical {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(255, 255, 255, 0.04);
-    padding: 10px 16px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    width: 100%;
-}
-.auth-option-vertical:hover {
-    background: rgba(124, 58, 237, 0.1);
-    transform: translateX(4px);
-}
-.auth-option-vertical input {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--primary);
-}
-.auth-option-vertical span {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-/* ===== خيارات الحسابات العمودية ===== */
-.auth-options-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 10px 0;
-    width: 100%;
-}
-.auth-option-vertical {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    padding: 12px 16px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    width: 100%;
-}
-.auth-option-vertical:hover {
-    background: rgba(124, 58, 237, 0.12);
-    transform: translateX(4px);
-}
-.auth-option-vertical input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--primary);
-    flex-shrink: 0;
-}
-.auth-option-vertical span {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-/* إزالة أي تنسيقات قديمة */
-.auth-options {
-    display: flex;
-    flex-direction: column !important;
-    gap: 12px !important;
-    padding: 10px 0 !important;
-    width: 100% !important;
-}
-.auth-option {
-    display: flex !important;
-    align-items: center !important;
-    gap: 12px !important;
-    background: rgba(255, 255, 255, 0.04) !important;
-    padding: 12px 16px !important;
-    border-radius: 10px !important;
-    cursor: pointer !important;
-    width: 100% !important;
-}
-.auth-option:hover {
-    background: rgba(124, 58, 237, 0.12) !important;
-    transform: translateX(4px) !important;
-}
-.auth-option input[type="radio"] {
-    width: 18px !important;
-    height: 18px !important;
-    margin: 0 !important;
-    cursor: pointer !important;
-    accent-color: var(--primary) !important;
-    flex-shrink: 0 !important;
-}
-.auth-option span {
-    font-size: 15px !important;
-    font-weight: 500 !important;
-    color: var(--text-primary) !important;
-}
-
-@media (max-width: 600px) {
-    .auth-options-vertical, .auth-options {
-        gap: 8px !important;
-    }
-    .auth-option-vertical, .auth-option {
-        padding: 10px 12px !important;
-    }
-    .auth-option-vertical span, .auth-option span {
-        font-size: 14px !important;
-    }
-}
-/* ===== خيارات الحسابات العمودية ===== */
-.auth-options-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 10px 0;
-    width: 100%;
-}
-.auth-option-vertical {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    padding: 12px 16px;
-    border-radius: 10px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    width: 100%;
-}
-.auth-option-vertical:hover {
-    background: rgba(124, 58, 237, 0.12);
-    transform: translateX(4px);
-}
-.auth-option-vertical input[type="radio"] {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--primary);
-    flex-shrink: 0;
-}
-.auth-option-vertical span {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-@media (max-width: 600px) {
-    .auth-options-vertical {
-        gap: 8px;
-    }
-    .auth-option-vertical {
-        padding: 10px 12px;
-    }
-    .auth-option-vertical span {
-        font-size: 14px;
-    }
 }
