@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع تعديل إصدارات donutsmp.net وتحديث التعديل
+// BOT CRAFT v6.0 - كامل مع وضع البياع
 // ========================================
 
 let currentUser = null;
@@ -23,10 +23,27 @@ const allVersions = [
     '1.11.2', '1.11.1', '1.11', '1.10.2', '1.10.1', '1.10', '1.9.4', '1.9.3', '1.9.2', '1.9.1', '1.9', '1.8.9', '1.8.8'
 ];
 
+// إصدارات خاصة ببعض السيرفرات
 const specialServerVersions = {
     'hypixel.net': '1.8.9',
-    'donut': '1.21.1'
+    'donut': '1.21.10'
 };
+
+// دالة لملء قائمة أنواع البوتات (تُستخدم في الإنشاء والتعديل)
+function populateBotTypes(selectId) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    // حفظ القيمة المحددة حاليًا إن وجدت
+    const currentValue = select.value;
+    const types = [
+        { value: 'afk', label: '😴 مأفك - يدافع عن نفسه' },
+        { value: 'hunter', label: '⚔️ صياد - يطارد اللاعبين' },
+        { value: 'coward', label: '😨 جبان - ينفصل عند الضربة' },
+        { value: 'seller', label: '🛒 بياع - يبيع الأغراض تلقائياً' }
+    ];
+    select.innerHTML = types.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
+    if (currentValue) select.value = currentValue;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
@@ -41,6 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initAuth();
     loadDashboard();
     loadBots();
+    populateBotTypes('createBotType');
+    populateBotTypes('editBotType');
 });
 
 function initAuth() {
@@ -140,7 +159,6 @@ function navigateTo(page) {
     if (page === 'analytics') loadAnalytics();
 }
 
-// دالة تحديث الإصدارات حسب السيرفر (لنافذة الإنشاء)
 function updateVersionsForServer(serverIp, selectId) {
     const serverLower = serverIp.toLowerCase();
     const versionSelect = document.getElementById(selectId);
@@ -164,29 +182,6 @@ function updateVersionsForServer(serverIp, selectId) {
 
     versionSelect.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join('');
     hideServerWarning();
-}
-
-// دالة تحديث الإصدارات في نافذة التعديل
-function updateVersionsForServerInEdit(serverIp) {
-    const serverLower = serverIp.toLowerCase();
-    const versionSelect = document.getElementById('editVersion');
-    if (!versionSelect) return;
-
-    if (serverLower.includes('donutsmp.net')) {
-        const donutVersions = ['1.21', '1.21.1', '1.21.2'];
-        versionSelect.innerHTML = donutVersions.map(v => `<option value="${v}">${v}</option>`).join('');
-        versionSelect.value = '1.21';
-        return;
-    }
-
-    for (const [key, forcedVersion] of Object.entries(specialServerVersions)) {
-        if (serverLower.includes(key)) {
-            versionSelect.innerHTML = `<option value="${forcedVersion}">🔒 ${forcedVersion}</option>`;
-            return;
-        }
-    }
-
-    versionSelect.innerHTML = allVersions.map(v => `<option value="${v}">${v}</option>`).join('');
 }
 
 function showServerWarning(serverName) {
@@ -223,7 +218,7 @@ function initCharts() {
     if (ctx2) {
         distributionChart = new Chart(ctx2, {
             type: 'doughnut',
-            data: { labels: ['مأفك', 'صياد', 'جبان'], datasets: [{ data: [0, 0, 0], backgroundColor: ['#a855f7', '#3b82f6', '#f59e0b'], borderWidth: 0 }] },
+            data: { labels: ['مأفك', 'صياد', 'جبان', 'بياع'], datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#a855f7', '#3b82f6', '#f59e0b', '#22c55e'], borderWidth: 0 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#a0a0c0' } } } }
         });
     }
@@ -254,7 +249,9 @@ function loadDashboard() {
         document.getElementById('statServers').innerHTML = [...new Set(bots.map(b => b.server_ip))].length;
         document.getElementById('botsCountNav').innerHTML = bots.length;
         if (distributionChart) {
-            distributionChart.data.datasets[0].data = [bots.filter(b => b.bot_type === 'afk').length, bots.filter(b => b.bot_type === 'hunter').length, bots.filter(b => b.bot_type === 'coward').length];
+            const counts = { afk: 0, hunter: 0, coward: 0, seller: 0 };
+            bots.forEach(b => { if (counts[b.bot_type] !== undefined) counts[b.bot_type]++; });
+            distributionChart.data.datasets[0].data = [counts.afk, counts.hunter, counts.coward, counts.seller];
             distributionChart.update();
         }
         const recentDiv = document.getElementById('recentActivities');
@@ -281,6 +278,12 @@ function renderBots() {
     }
     container.innerHTML = filtered.map(b => {
         const isVerified = b.mc_token && b.mc_token !== '';
+        const typeLabels = {
+            afk: 'مأفك',
+            hunter: 'صياد',
+            coward: 'جبان',
+            seller: 'بياع'
+        };
         return `
             <div class="bot-card" onclick="openBotControl(${b.id}, '${escapeHtml(b.bot_name)}')">
                 <div class="bot-header">
@@ -289,7 +292,7 @@ function renderBots() {
                 </div>
                 <div class="bot-details">
                     <div><i class="fas fa-globe"></i> ${escapeHtml(b.server_ip)}</div>
-                    <div><i class="fas fa-tag"></i> ${b.bot_type === 'afk' ? 'مأفك' : b.bot_type === 'hunter' ? 'صياد' : 'جبان'}</div>
+                    <div><i class="fas fa-tag"></i> ${typeLabels[b.bot_type] || b.bot_type}</div>
                     <div><i class="fas fa-code-branch"></i> ${b.version || '1.21.10'}</div>
                     <div><i class="fas fa-calendar"></i> ${new Date(b.created_at).toLocaleDateString('ar-EG')}</div>
                     ${b.auth_type === 'microsoft' 
@@ -342,7 +345,7 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
         if (authType === 'microsoft') {
             alert(`✅ تم إنشاء البوت (حساب حقيقي).\nعند الضغط على "تشغيل" سيقوم البوت بطلب مصادقة مايكروسوفت.\nافتح سجلات البوت (زر "سجلات") لرؤية الرابط والرمز.`);
         } else {
-            alert(`✅ تم إنشاء البوت.`);
+            alert(`✅ تم إنشاء البوت وتشغيله في وضع غير مسجل.`);
         }
         navigateTo('bots');
         loadBots();
@@ -389,7 +392,6 @@ function deleteBot(id) {
     }
 }
 
-// ========== تعديل البوت (مع دعم تحديث الإصدارات حسب السيرفر) ==========
 function openEditModal(id) {
     const bot = currentBots.find(b => b.id === id);
     if (!bot) return;
@@ -398,26 +400,9 @@ function openEditModal(id) {
     document.getElementById('editBotType').value = bot.bot_type;
     document.getElementById('editServerIp').value = bot.server_ip;
     document.getElementById('editTeamNames').value = bot.team_names || '';
-    
-    // تحديث قائمة الإصدارات بناءً على عنوان السيرفر
-    updateVersionsForServerInEdit(bot.server_ip);
-    // محاولة تحديد الإصدار المخزن مسبقاً إن كان متوافقاً
-    if (bot.version) {
-        const optionExists = Array.from(document.getElementById('editVersion').options).some(opt => opt.value === bot.version);
-        if (optionExists) document.getElementById('editVersion').value = bot.version;
-        else document.getElementById('editVersion').value = document.getElementById('editVersion').options[0]?.value || '1.21.10';
-    }
-    
+    document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
     document.getElementById('editModal').style.display = 'flex';
-    
-    // إضافة مستمع لتغيير عنوان السيرفر في نافذة التعديل
-    const serverIpInput = document.getElementById('editServerIp');
-    // إزالة المستمع القديم إن وجد
-    if (serverIpInput._listener) serverIpInput.removeEventListener('input', serverIpInput._listener);
-    const handler = () => updateVersionsForServerInEdit(serverIpInput.value);
-    serverIpInput.addEventListener('input', handler);
-    serverIpInput._listener = handler;
 }
 
 function closeEditModal() {
@@ -629,7 +614,7 @@ populateVersions('editVersion');
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;
-window.closeCameraModal = closeCameraModal; // قد تكون غير معرفة لكنها موجودة في HTML
+window.closeCameraModal = closeCameraModal;
 window.sendCommand = sendCommand;
 window.sendChatMessage = sendChatMessage;
 window.refreshInventory = refreshInventory;
