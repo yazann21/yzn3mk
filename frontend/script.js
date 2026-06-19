@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع وضع البياع وأمر البيع المخصص (يظهر فقط عند اختيار بياع)
+// BOT CRAFT v6.0 - كامل مع وضع البياع وأمر البيع المخصص
 // ========================================
 
 let currentUser = null;
@@ -42,7 +42,6 @@ function populateBotTypes(selectId) {
     if (currentValue) select.value = currentValue;
 }
 
-// دالة لإظهار/إخفاء حقل أمر البيع
 function toggleSellCommandField(selectElement, inputId, containerId) {
     const container = document.getElementById(containerId);
     const input = document.getElementById(inputId);
@@ -51,7 +50,7 @@ function toggleSellCommandField(selectElement, inputId, containerId) {
         container.style.display = 'block';
     } else {
         container.style.display = 'none';
-        input.value = ''; // مسح القيمة عند الإخفاء
+        input.value = '';
     }
 }
 
@@ -71,17 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
     populateBotTypes('createBotType');
     populateBotTypes('editBotType');
 
-    // إظهار/إخفاء حقل أمر البيع عند تغيير نوع البوت في صفحة الإنشاء
     const createTypeSelect = document.getElementById('createBotType');
     if (createTypeSelect) {
         createTypeSelect.addEventListener('change', function() {
             toggleSellCommandField(this, 'createSellCommand', 'createSellGroup');
         });
-        // تطبيق الحالة الأولية
         setTimeout(() => toggleSellCommandField(createTypeSelect, 'createSellCommand', 'createSellGroup'), 100);
     }
 
-    // إظهار/إخفاء حقل أمر البيع عند تغيير نوع البوت في نافذة التعديل
     const editTypeSelect = document.getElementById('editBotType');
     if (editTypeSelect) {
         editTypeSelect.addEventListener('change', function() {
@@ -344,7 +340,6 @@ function renderBots() {
     }).join('');
 }
 
-// ========== إنشاء بوت جديد ==========
 document.getElementById('createBotForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const botName = document.getElementById('createBotName').value;
@@ -435,7 +430,6 @@ function openEditModal(id) {
     document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
     
-    // إظهار/إخفاء حقل أمر البيع حسب نوع البوت
     const sellGroup = document.getElementById('editSellGroup');
     const sellInput = document.getElementById('editSellCommand');
     if (sellGroup && sellInput) {
@@ -660,7 +654,6 @@ function populateVersions(selectId) {
 populateVersions('createVersion');
 populateVersions('editVersion');
 
-// ربط الدوال العامة
 window.closeEditModal = closeEditModal;
 window.closeLogs = closeLogs;
 window.closeBotControl = closeBotControl;

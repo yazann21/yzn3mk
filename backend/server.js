@@ -35,13 +35,32 @@ app.use(session({
 const db = new sqlite3.Database(path.join(__dirname, 'bots.db'));
 db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-    db.run(`CREATE TABLE IF NOT EXISTS bots (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, bot_name TEXT, bot_type TEXT, server_ip TEXT, team_names TEXT DEFAULT '', version TEXT DEFAULT '1.21.10', status TEXT DEFAULT 'stopped', mc_token TEXT, mc_username TEXT, mc_profile_id TEXT, auth_type TEXT DEFAULT 'offline', created_at DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id))`);
+    db.run(`CREATE TABLE IF NOT EXISTS bots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        bot_name TEXT,
+        bot_type TEXT,
+        server_ip TEXT,
+        team_names TEXT DEFAULT '',
+        version TEXT DEFAULT '1.21.10',
+        status TEXT DEFAULT 'stopped',
+        mc_token TEXT,
+        mc_username TEXT,
+        mc_profile_id TEXT,
+        auth_type TEXT DEFAULT 'offline',
+        sell_command TEXT DEFAULT '/sell',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )`);
+    db.run(`ALTER TABLE bots ADD COLUMN sell_command TEXT DEFAULT '/sell'`, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+            console.error('Error adding sell_command column:', err);
+        }
+    });
 });
 
-// ========== تخزين روابط الكاميرا لكل بوت ==========
 const botCameraUrls = new Map();
 
-// تسجيل رابط الكاميرا من البوت
 app.post('/api/register-camera-url', (req, res) => {
     const { botId, url } = req.body;
     if (botId && url) {
@@ -53,7 +72,6 @@ app.post('/api/register-camera-url', (req, res) => {
     }
 });
 
-// مسار فتح الكاميرا – إعادة توجيه إلى رابط ngrok مع إضافة /view
 app.get('/camera/:botId', (req, res) => {
     const botId = parseInt(req.params.botId);
     const cameraUrl = botCameraUrls.get(botId);
@@ -75,7 +93,6 @@ app.get('/camera/:botId', (req, res) => {
     }
 });
 
-// ========== مصادقة المستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -113,19 +130,18 @@ app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
-// ========== إدارة البوتات ==========
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    db.all('SELECT * FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
+    db.all('SELECT id, user_id, bot_name, bot_type, server_ip, team_names, version, status, mc_token, mc_username, mc_profile_id, auth_type, sell_command, created_at FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
         res.json({ bots: bots || [] });
     });
 });
 
 app.post('/api/create-bot-cloud', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botName, botType, serverIp, teamNames, version, authType } = req.body;
-    db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status, auth_type) VALUES (?, ?, ?, ?, ?, ?, 'stopped', ?)`,
-        [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10', authType || 'offline'], function(err) {
+    const { botName, botType, serverIp, teamNames, version, authType, sellCommand } = req.body;
+    db.run(`INSERT INTO bots (user_id, bot_name, bot_type, server_ip, team_names, version, status, auth_type, sell_command) VALUES (?, ?, ?, ?, ?, ?, 'stopped', ?, ?)`,
+        [req.session.userId, botName, botType, serverIp, teamNames || '', version || '1.21.10', authType || 'offline', sellCommand || '/sell'], function(err) {
             if (err) return res.status(500).json({ error: err.message });
             const newBotId = this.lastID;
             res.json({ success: true, botId: newBotId, need_verification: (authType === 'microsoft') });
@@ -159,26 +175,23 @@ app.post('/api/start-cloud-bot', (req, res) => {
         let mcUsername = bot.mc_username;
         let mcProfileId = bot.mc_profile_id;
         let authType = bot.auth_type || 'offline';
+        let sellCommand = bot.sell_command || '/sell';
         
-        startBot(botId, bot.bot_name, mcToken, mcUsername, mcProfileId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, authType);
+        startBot(botId, bot.bot_name, mcToken, mcUsername, mcProfileId, bot.server_ip, bot.bot_type, bot.team_names, bot.version, authType, sellCommand);
         db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
         res.json({ success: true, mode: authType });
     });
 });
 
-// ========== استقبال قائمة الأغراض من البوت البياع ==========
 app.post('/api/seller-items', (req, res) => {
     const { botId, items } = req.body;
     if (!botId || !items) {
         return res.status(400).json({ error: 'بيانات ناقصة' });
     }
     console.log(`📦 استلام قائمة أغراض البوت ${botId}:`, JSON.stringify(items, null, 2));
-    // يمكنك حفظها في قاعدة البيانات هنا
-    // مثال: db.run('INSERT INTO seller_items (bot_id, items_json, created_at) VALUES (?, ?, ?)', ...)
     res.json({ success: true, items, count: items.length });
 });
 
-// ========== باقي مسارات التحكم ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
@@ -200,9 +213,9 @@ app.delete('/api/delete-bot', (req, res) => {
 
 app.put('/api/update-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
-    const { botId, botName, botType, serverIp, teamNames, version } = req.body;
-    db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ? WHERE id = ? AND user_id = ?`,
-        [botName, botType, serverIp, teamNames || '', version || '1.21.10', botId, req.session.userId]);
+    const { botId, botName, botType, serverIp, teamNames, version, sellCommand } = req.body;
+    db.run(`UPDATE bots SET bot_name = ?, bot_type = ?, server_ip = ?, team_names = ?, version = ?, sell_command = ? WHERE id = ? AND user_id = ?`,
+        [botName, botType, serverIp, teamNames || '', version || '1.21.10', sellCommand || '/sell', botId, req.session.userId]);
     res.json({ success: true });
 });
 
@@ -234,7 +247,7 @@ app.post('/api/restart-bot', (req, res) => {
     setTimeout(() => {
         db.get('SELECT * FROM bots WHERE id = ?', [botId], (err, bot) => {
             if (bot) {
-                startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version, bot.auth_type);
+                startBot(botId, bot.bot_name, bot.mc_token, bot.mc_username, bot.mc_profile_id, bot.server_ip, bot.bot_type, bot.team_names, bot.version, bot.auth_type, bot.sell_command || '/sell');
                 db.run('UPDATE bots SET status = ? WHERE id = ?', ['online', botId]);
             }
         });
