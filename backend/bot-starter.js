@@ -5,20 +5,18 @@ const botProcesses = new Map();
 const botLogs = new Map();
 const botStats = new Map();
 const botInventory = new Map();
-const botViewerPorts = new Map();
 
-function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline') {
+function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, botType, teamNames = '', version = '1.21.10', authType = 'offline', sellCommand = '/sell') {
   const existing = botProcesses.get(botId);
   if (existing) {
     console.log(`[Bot ${botId}] إنهاء العملية السابقة...`);
     try { existing.kill('SIGTERM'); } catch(e) {}
     botProcesses.delete(botId);
-    botViewerPorts.delete(botId);
   }
 
   const env = {
     ...process.env,
-    BOT_ID: String(botId),
+    BOT_ID: botId,
     MC_TOKEN: mcToken || '',
     BOT_USERNAME: mcUsername || botName,
     BOT_PROFILE_ID: mcProfileId || '',
@@ -27,8 +25,8 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     TEAM_NAMES: teamNames,
     MC_VERSION: version,
     AUTH_TYPE: authType,
-    API_URL: process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`,
-    NGROK_AUTHTOKEN: process.env.NGROK_AUTHTOKEN || '',
+    SELL_COMMAND: sellCommand,
+    API_URL: process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`
   };
 
   const botProcess = spawn('node', [path.join(__dirname, 'bot.js')], {
@@ -57,19 +55,23 @@ function startBot(botId, botName, mcToken, mcUsername, mcProfileId, serverIp, bo
     if (msg.type === 'inventory') botInventory.set(botId, msg.inventory);
   });
 
-  botProcess.on('exit', () => {
+  botProcess.on('exit', (code, signal) => {
+    console.log(`[Bot ${botId}] خرجت العملية برمز ${code} وإشارة ${signal}`);
     botProcesses.delete(botId);
-    botViewerPorts.delete(botId);
   });
 
   botProcesses.set(botId, botProcess);
-  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started`);
+  console.log(`✅ Bot ${botId} (${mcUsername || botName}) started.`);
   return { process: botProcess, logs };
 }
 
 function stopBot(botId) {
   const p = botProcesses.get(botId);
-  if (p) { p.kill('SIGTERM'); botProcesses.delete(botId); return true; }
+  if (p) {
+    p.kill('SIGTERM');
+    botProcesses.delete(botId);
+    return true;
+  }
   return false;
 }
 
