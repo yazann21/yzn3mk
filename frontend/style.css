@@ -993,3 +993,38 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .bot-card { padding: 15px; }
     .inventory-grid { grid-template-columns: repeat(4, 1fr); }
 }
+/* خيارات الحسابات العمودية (تحت بعض) */
+.auth-options-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 0;
+    width: 100%;
+}
+.auth-option-vertical {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 10px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+.auth-option-vertical:hover {
+    background: rgba(124, 58, 237, 0.1);
+    transform: translateX(4px);
+}
+.auth-option-vertical input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+.auth-option-vertical span {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}

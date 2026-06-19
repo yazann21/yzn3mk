@@ -1,5 +1,5 @@
 // ========================================
-// BOT CRAFT v6.0 - كامل مع وضع البياع وأمر البيع المخصص
+// BOT CRAFT v6.0 - كامل مع وضع البياع وأمر البيع المخصص (يظهر فقط عند اختيار بياع)
 // ========================================
 
 let currentUser = null;
@@ -42,6 +42,19 @@ function populateBotTypes(selectId) {
     if (currentValue) select.value = currentValue;
 }
 
+// دالة لإظهار/إخفاء حقل أمر البيع
+function toggleSellCommandField(selectElement, inputId, containerId) {
+    const container = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+    if (!container || !input) return;
+    if (selectElement.value === 'seller') {
+        container.style.display = 'block';
+    } else {
+        container.style.display = 'none';
+        input.value = ''; // مسح القيمة عند الإخفاء
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         const loading = document.getElementById('loadingOverlay');
@@ -57,6 +70,24 @@ document.addEventListener('DOMContentLoaded', () => {
     loadBots();
     populateBotTypes('createBotType');
     populateBotTypes('editBotType');
+
+    // إظهار/إخفاء حقل أمر البيع عند تغيير نوع البوت في صفحة الإنشاء
+    const createTypeSelect = document.getElementById('createBotType');
+    if (createTypeSelect) {
+        createTypeSelect.addEventListener('change', function() {
+            toggleSellCommandField(this, 'createSellCommand', 'createSellGroup');
+        });
+        // تطبيق الحالة الأولية
+        setTimeout(() => toggleSellCommandField(createTypeSelect, 'createSellCommand', 'createSellGroup'), 100);
+    }
+
+    // إظهار/إخفاء حقل أمر البيع عند تغيير نوع البوت في نافذة التعديل
+    const editTypeSelect = document.getElementById('editBotType');
+    if (editTypeSelect) {
+        editTypeSelect.addEventListener('change', function() {
+            toggleSellCommandField(this, 'editSellCommand', 'editSellGroup');
+        });
+    }
 });
 
 function initAuth() {
@@ -335,7 +366,7 @@ document.getElementById('createBotForm').addEventListener('submit', async (e) =>
             credentials: 'include',
             body: JSON.stringify({ 
                 botName, botType, serverIp, teamNames: '', version, authType,
-                sellCommand: sellCommand
+                sellCommand: (botType === 'seller') ? sellCommand : ''
             })
         });
         const data = await response.json();
@@ -403,7 +434,20 @@ function openEditModal(id) {
     document.getElementById('editTeamNames').value = bot.team_names || '';
     document.getElementById('editVersion').innerHTML = allVersions.map(v => `<option value="${v}" ${v === (bot.version || '1.21.10') ? 'selected' : ''}>${v}</option>`).join('');
     document.getElementById('editTeamGroup').style.display = bot.bot_type === 'hunter' ? 'block' : 'none';
-    document.getElementById('editSellCommand').value = bot.sell_command || '/sell';
+    
+    // إظهار/إخفاء حقل أمر البيع حسب نوع البوت
+    const sellGroup = document.getElementById('editSellGroup');
+    const sellInput = document.getElementById('editSellCommand');
+    if (sellGroup && sellInput) {
+        if (bot.bot_type === 'seller') {
+            sellGroup.style.display = 'block';
+            sellInput.value = bot.sell_command || '/sell';
+        } else {
+            sellGroup.style.display = 'none';
+            sellInput.value = '';
+        }
+    }
+    
     document.getElementById('editModal').style.display = 'flex';
 }
 
@@ -425,7 +469,7 @@ function saveEditBot() {
         credentials: 'include',
         body: JSON.stringify({ 
             botId, botName, botType, serverIp, teamNames, version,
-            sellCommand: sellCommand
+            sellCommand: (botType === 'seller') ? sellCommand : ''
         })
     }).then(() => { closeEditModal(); loadBots(); });
 }

@@ -120,14 +120,15 @@
                                     <span class="input-border"></span>
                                 </div>
                             </div>
+                            <!-- خيارات الحسابات (عمودية) -->
                             <div class="form-row">
                                 <div class="input-group floating" style="grid-column: span 2;">
-                                    <div class="auth-options">
-                                        <label class="auth-option">
+                                    <div class="auth-options-vertical">
+                                        <label class="auth-option-vertical">
                                             <input type="radio" name="authType" value="offline" checked>
                                             <span>🎭 وضع غير مسجل (دخول بالاسم فقط)</span>
                                         </label>
-                                        <label class="auth-option">
+                                        <label class="auth-option-vertical">
                                             <input type="radio" name="authType" value="microsoft">
                                             <span>🔐 حساب مايكروسوفت حقيقي (يتطلب مصادقة)</span>
                                         </label>
@@ -135,8 +136,8 @@
                                     <span class="input-border"></span>
                                 </div>
                             </div>
-                            <!-- حقل أمر البيع المخصص -->
-                            <div class="form-row">
+                            <!-- حقل أمر البيع (مخفي افتراضياً) -->
+                            <div class="form-row" id="createSellGroup" style="display: none;">
                                 <div class="input-group floating" style="grid-column: span 2;">
                                     <input type="text" id="createSellCommand" placeholder="/sell">
                                     <label>💬 أمر البيع (مثال: /sell, /sell all, /shop)</label>
@@ -192,7 +193,8 @@
                     <div class="input-group floating"><input type="text" id="editServerIp"><label>عنوان السيرفر</label></div>
                     <div class="input-group floating" id="editTeamGroup"><input type="text" id="editTeamNames"><label>أسماء الأصدقاء</label></div>
                     <div class="input-group floating"><select id="editVersion"></select><label>إصدار ماينكرافت</label></div>
-                    <div class="input-group floating" id="editSellGroup">
+                    <!-- حقل أمر البيع في التعديل (مخفي افتراضياً) -->
+                    <div class="input-group floating" id="editSellGroup" style="display: none;">
                         <input type="text" id="editSellCommand" placeholder="/sell">
                         <label>💬 أمر البيع</label>
                     </div>
