@@ -1112,3 +1112,51 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
         font-size: 14px !important;
     }
 }
+/* ===== خيارات الحسابات العمودية ===== */
+.auth-options-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 0;
+    width: 100%;
+}
+.auth-option-vertical {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 12px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+.auth-option-vertical:hover {
+    background: rgba(124, 58, 237, 0.12);
+    transform: translateX(4px);
+}
+.auth-option-vertical input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary);
+    flex-shrink: 0;
+}
+.auth-option-vertical span {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+@media (max-width: 600px) {
+    .auth-options-vertical {
+        gap: 8px;
+    }
+    .auth-option-vertical {
+        padding: 10px 12px;
+    }
+    .auth-option-vertical span {
+        font-size: 14px;
+    }
+}
