@@ -303,16 +303,16 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نطاق البيع 0-44 فقط ==========
+// ========== وضع البياع (SELLER MODE) - نظام ذكي بالكامل ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
+  let isActive = true;
 
-  log(`🛒 ===== بدء وضع البياع (نطاق البيع 0-44) ====`);
+  log(`🛒 ===== بدء وضع البياع (نظام ذكي بالكامل) ====`);
   log(`🛒 نوع البوت: ${config.botType}`);
   log(`🛒 الأمر المستخدم: ${sellCmd}`);
-  log(`🛒 سيتم كتابة الأمر بعد 1.5 ثانية`);
 
   // دالة لجلب الأماكن الفارغة في قائمة البيع (0-44 فقط)
   function getEmptyTradeSlots(window) {
@@ -348,127 +348,184 @@ if (config.botType === 'seller') {
     return true;
   }
 
+  // دالة لحساب عدد الأغراض في المخزون
+  function countInventoryItems(window) {
+    let count = 0;
+    for (let i = 54; i <= 89; i++) {
+      if (window.slots[i]) count++;
+    }
+    return count;
+  }
+
+  // دالة لحساب عدد الأغراض في قائمة البيع
+  function countTradeItems(window) {
+    let count = 0;
+    for (let i = 0; i <= 44; i++) {
+      if (window.slots[i]) count++;
+    }
+    return count;
+  }
+
   async function executeSell(window) {
-    if (isProcessing) return;
+    if (isProcessing || !isActive) return;
     isProcessing = true;
     
     try {
-      // 1. جلب الأغراض من المخزون والأماكن الفارغة في قائمة البيع
+      // 1. جلب البيانات الحالية
       let items = getInventoryItems(window);
       let emptySlots = getEmptyTradeSlots(window);
-      
-      if (items.length === 0) {
-        log(`⏳ لا توجد أغراض في المخزون. انتظار...`);
-        isProcessing = false;
-        setTimeout(() => {
-          if (currentWindow) executeSell(currentWindow);
-        }, 1000); // ✅ 1 ثانية بدلاً من 3
-        return;
+      let tradeCount = countTradeItems(window);
+      let inventoryCount = countInventoryItems(window);
+
+      // 2. إذا كان المخزون فارغاً، انتظر حتى تصل أغراض
+      while (inventoryCount === 0) {
+        log(`⏳ انتظار وصول أغراض من الأرض... (المخزون فارغ)`);
+        await sleep(200); // انتظار قصير جداً للتحقق
+        items = getInventoryItems(window);
+        inventoryCount = items.length;
+        // لو السيرفر ما زال يعطي أغراض جديدة، بنكمل
+        if (inventoryCount > 0) break;
       }
 
-      log(`📦 ${items.length} غرض في المخزون، ${emptySlots.length} مكان فارغ في قائمة البيع`);
-
-      // 2. نقل الأغراض بسرعة (فقط إلى السلوتات 0-44)
-      let movedCount = 0;
-      const itemsToMove = Math.min(items.length, emptySlots.length);
-      
-      for (let i = 0; i < itemsToMove; i++) {
-        const fromSlot = items[i].slot;
-        const toSlot = emptySlots[i];
-        
-        if (window.slots[fromSlot]) {
-          bot.clickWindow(fromSlot, 0, 0);
-          await sleep(5);    // تأخير 5ms بين النقرات (سريع)
-          bot.clickWindow(toSlot, 0, 0);
-          await sleep(5);
-          movedCount++;
+      // 3. إذا كان في أغراض بالمخزون، ننقلها
+      if (inventoryCount > 0) {
+        // نقل الأغراض بسرعة فائقة
+        const itemsToMove = Math.min(inventoryCount, emptySlots.length);
+        for (let i = 0; i < itemsToMove; i++) {
+          const fromSlot = items[i].slot;
+          const toSlot = emptySlots[i];
+          
+          if (window.slots[fromSlot]) {
+            bot.clickWindow(fromSlot, 0, 0);
+            await sleep(2);
+            bot.clickWindow(toSlot, 0, 0);
+            await sleep(2);
+          }
         }
+        log(`📦 تم نقل ${itemsToMove} غرض إلى قائمة البيع`);
       }
 
-      log(`✅ تم نقل ${movedCount} غرض إلى قائمة البيع`);
+      // 4. تحديث البيانات بعد النقل
+      tradeCount = countTradeItems(window);
+      inventoryCount = countInventoryItems(window);
 
-      // 3. التحقق من امتلاء قائمة البيع
+      // 5. إذا كانت قائمة البيع ممتلئة → بيع
       if (isTradeFull(window)) {
-        log(`🛒 قائمة البيع ممتلئة! (0-44) بيع...`);
-        bot.clickWindow(53, 0, 0);  // زر البيع
-        await sleep(50);            // تأخير 50ms بعد البيع
+        log(`🛒 قائمة البيع ممتلئة! (${tradeCount} غرض) بيع...`);
+        bot.clickWindow(53, 0, 0);
+        await sleep(20);
         log(`✅ تم البيع!`);
-        
         isProcessing = false;
-        // نكرر العملية بعد 300ms
-        setTimeout(() => {
-          if (currentWindow) executeSell(currentWindow);
-        }, 300);
+        
+        // نكرر العملية فوراً (بدون وقت)
+        if (isActive && currentWindow) {
+          executeSell(currentWindow);
+        }
         return;
       }
 
-      // 4. إذا كان في أغراض متبقية في المخزون وأماكن فارغة، نكرر
-      items = getInventoryItems(window);
-      emptySlots = getEmptyTradeSlots(window);
-      
-      if (items.length > 0 && emptySlots.length > 0) {
+      // 6. إذا كان في أغراض بالمخزون وأماكن فارغة بقائمة البيع
+      if (inventoryCount > 0 && tradeCount < 45) {
+        // نكرر فوراً دون انتظار
         isProcessing = false;
-        // نكرر فوراً (بدون انتظار)
         executeSell(window);
         return;
       }
 
-      // 5. إذا كانت قائمة البيع ممتلئة
-      if (isTradeFull(window)) {
-        log(`🛒 قائمة البيع ممتلئة! بيع...`);
-        bot.clickWindow(53, 0, 0);
-        await sleep(50);
-        log(`✅ تم البيع!`);
+      // 7. إذا كانت قائمة البيع غير ممتلئة والمخزون فارغ
+      if (inventoryCount === 0 && tradeCount < 45) {
+        log(`⏳ انتظار أغراض جديدة من الأرض (قائمة البيع: ${tradeCount}/45)`);
+        // ننتظر حتى تصل أغراض جديدة (لا وقت محدد)
+        let waitCycles = 0;
+        while (inventoryCount === 0 && tradeCount < 45) {
+          await sleep(200);
+          inventoryCount = countInventoryItems(window);
+          tradeCount = countTradeItems(window);
+          waitCycles++;
+          
+          // لو وصلت أغراض جديدة، نكسر الحلقة
+          if (inventoryCount > 0) {
+            log(`📦 وصلت أغراض جديدة! (${inventoryCount} غرض)`);
+            break;
+          }
+          
+          // لو امتلأت قائمة البيع من تلقاء نفسها (نادراً)
+          if (tradeCount === 45) {
+            break;
+          }
+        }
         
+        // نكرر العملية
         isProcessing = false;
-        setTimeout(() => {
-          if (currentWindow) executeSell(currentWindow);
-        }, 300);
+        if (isActive && currentWindow) {
+          executeSell(currentWindow);
+        }
         return;
       }
 
-      // 6. إذا لم يحدث شيء، ننتظر قليلاً ثم نعيد المحاولة
-      log(`⏳ انتظار أغراض جديدة...`);
+      // 8. حالة أمان: إذا كانت قائمة البيع ممتلئة ولكن لم نكتشفها
+      if (isTradeFull(window)) {
+        log(`🛒 قائمة البيع ممتلئة! (حالة أمان) بيع...`);
+        bot.clickWindow(53, 0, 0);
+        await sleep(20);
+        log(`✅ تم البيع!`);
+        isProcessing = false;
+        if (isActive && currentWindow) {
+          executeSell(currentWindow);
+        }
+        return;
+      }
+
+      // 9. أي حالة أخرى → نكرر
       isProcessing = false;
-      setTimeout(() => {
-        if (currentWindow) executeSell(currentWindow);
-      }, 1000); // ✅ 1 ثانية بدلاً من 3
+      if (isActive && currentWindow) {
+        executeSell(currentWindow);
+      }
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
       isProcessing = false;
-      setTimeout(() => {
-        if (currentWindow) executeSell(currentWindow);
-      }, 1000);
+      // نعيد المحاولة فوراً في حالة الخطأ
+      if (isActive && currentWindow) {
+        setTimeout(() => executeSell(currentWindow), 100);
+      }
     }
   }
 
-  // كتابة الأمر /sell بعد 1.5 ثانية
+  // كتابة الأمر /sell بعد 1.5 ثانية فقط لأول مرة
   setTimeout(() => {
-    log(`💬 كتابة الأمر ${sellCmd}`);
-    bot.chat(sellCmd);
+    if (isActive) {
+      log(`💬 كتابة الأمر ${sellCmd}`);
+      bot.chat(sellCmd);
+    }
   }, 1500);
 
   // عند فتح النافذة
   bot.on('windowOpen', (window) => {
     currentWindow = window;
     log(`📦 تم فتح نافذة البيع (قائمة البيع: 0-44)`);
+    // نبدأ العملية فوراً
     setTimeout(() => {
-      executeSell(window);
-    }, 100);  // تأخير 100ms فقط
+      if (isActive) executeSell(window);
+    }, 100);
   });
 
+  // عند إغلاق النافذة
   bot.on('windowClose', (window) => {
     if (window === currentWindow) {
       log(`🚪 النافذة أغلقت! إعادة فتح...`);
       currentWindow = null;
-      setTimeout(() => {
-        bot.chat(sellCmd);
-      }, 1000);
+      isProcessing = false;
+      // نعيد فتح النافذة فوراً
+      if (isActive) {
+        setTimeout(() => {
+          bot.chat(sellCmd);
+        }, 500);
+      }
     }
   });
 
-  log(`🛒 ===== تم إعداد وضع البياع (0-44) بنجاح ====`);
+  log(`🛒 ===== تم إعداد نظام البيع الذكي بالكامل بنجاح ====`);
 }   
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
