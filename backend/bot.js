@@ -362,7 +362,7 @@ if (config.botType === 'seller') {
         isProcessing = false;
         setTimeout(() => {
           if (currentWindow) executeSell(currentWindow);
-        }, 200);
+        }, 1000); // ✅ 1 ثانية بدلاً من 3
         return;
       }
 
@@ -398,7 +398,7 @@ if (config.botType === 'seller') {
         // نكرر العملية بعد 300ms
         setTimeout(() => {
           if (currentWindow) executeSell(currentWindow);
-        }, 100);
+        }, 300);
         return;
       }
 
@@ -432,7 +432,7 @@ if (config.botType === 'seller') {
       isProcessing = false;
       setTimeout(() => {
         if (currentWindow) executeSell(currentWindow);
-      }, 1000);
+      }, 1000); // ✅ 1 ثانية بدلاً من 3
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
