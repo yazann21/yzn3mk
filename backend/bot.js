@@ -303,87 +303,94 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-    // ========== وضع البياع (SELLER MODE) - نسخة فائقة السرعة ==========
-    if (config.botType === 'seller') {
-      const sellCmd = process.env.SELL_COMMAND || '/sell';
-      let isSelling = false;
-      let isProcessing = false;
+// ========== وضع البياع (SELLER MODE) - نسخة بدون إغلاق (أسرع) ==========
+if (config.botType === 'seller') {
+  const sellCmd = process.env.SELL_COMMAND || '/sell';
+  let isProcessing = false;
+  let currentWindow = null;
 
-      log(`🛒 ===== بدء وضع البياع (النسخة فائقة السرعة) ====`);
-      log(`🛒 نوع البوت: ${config.botType}`);
-      log(`🛒 الأمر المستخدم: ${sellCmd}`);
-      log(`🛒 سيتم كتابة الأمر `);
+  log(`🛒 ===== بدء وضع البياع (النسخة السريعة جداً - بدون إغلاق) ====`);
+  log(`🛒 نوع البوت: ${config.botType}`);
+  log(`🛒 الأمر المستخدم: ${sellCmd}`);
+  log(`🛒 سيتم كتابة الأمر بعد 1.5 ثانية`);
 
-      async function autoSell(window) {
-        if (isSelling) return;
-        isSelling = true;
-        isProcessing = true;
-        
-        try {
-          const inventorySlots = [];
-          for (let i = 54; i <= 89; i++) {
-            if (window.slots[i]) {
-              inventorySlots.push(i);
-            }
-          }
-
-          const tradeSlots = [];
-          for (let i = 1; i <= 52; i++) {
-            if (!window.slots[i]) {
-              tradeSlots.push(i);
-            }
-          }
-
-          if (inventorySlots.length === 0) {
-            bot.closeWindow(window);
-            isSelling = false;
-            isProcessing = false;
-            setTimeout(() => { bot.chat(sellCmd); }, 1000);
-            return;
-          }
-
-          const itemsToMove = Math.min(inventorySlots.length, tradeSlots.length);
-          for (let i = 0; i < itemsToMove; i++) {
-            const fromSlot = inventorySlots[i];
-            const toSlot = tradeSlots[i];
-            
-            bot.clickWindow(fromSlot, 0, 0);
-            await sleep(5);
-            bot.clickWindow(toSlot, 0, 0);
-            await sleep(5);
-          }
-
-          await sleep(150);
-          bot.clickWindow(53, 0, 0);
-          await sleep(150);
-          bot.closeWindow(window);
-
-          isSelling = false;
-          isProcessing = false;
-          
-          setTimeout(() => {
-            bot.chat(sellCmd);
-          }, 50);
-
-        } catch (err) {
-          try { bot.closeWindow(window); } catch(e) {}
-          isSelling = false;
-          isProcessing = false;
-          setTimeout(() => { bot.chat(sellCmd); }, 1000);
+  // دالة لنقل الأغراض فقط (بدون إغلاق)
+  async function moveItems(window) {
+    if (isProcessing) return;
+    isProcessing = true;
+    
+    try {
+      // جمع الأغراض من المخزون (54-89)
+      const inventorySlots = [];
+      for (let i = 54; i <= 89; i++) {
+        if (window.slots[i]) {
+          inventorySlots.push(i);
         }
       }
 
+      // جمع الأماكن الفارغة في قائمة البيع (1-52)
+      const tradeSlots = [];
+      for (let i = 1; i <= 52; i++) {
+        if (!window.slots[i]) {
+          tradeSlots.push(i);
+        }
+      }
+
+      if (inventorySlots.length === 0) {
+        isProcessing = false;
+        return;
+      }
+
+      // نقل الأغراض بسرعة
+      const itemsToMove = Math.min(inventorySlots.length, tradeSlots.length);
+      for (let i = 0; i < itemsToMove; i++) {
+        const fromSlot = inventorySlots[i];
+        const toSlot = tradeSlots[i];
+        
+        bot.clickWindow(fromSlot, 0, 0);
+        await sleep(5);
+        bot.clickWindow(toSlot, 0, 0);
+        await sleep(5);
+      }
+
+      // الضغط على زر البيع (سلوت 53)
+      await sleep(50);
+      bot.clickWindow(53, 0, 0);
+      await sleep(50);
+
+      isProcessing = false;
+      // بعد البيع، نتحقق مرة أخرى من وجود أغراض جديدة
       setTimeout(() => {
-        bot.chat(sellCmd);
+        if (currentWindow) moveItems(currentWindow);
       }, 500);
 
-      bot.on('windowOpen', (window) => {
-        if (isProcessing) return;
-        autoSell(window);
-      });
-
-      log(`🛒 ===== تم إعداد وضع البياع فائق السرعة بنجاح ====`);
+    } catch (err) {
+      log(`⚠️ خطأ: ${err.message}`);
+      isProcessing = false;
     }
+  }
+
+  // كتابة الأمر /sell
+  setTimeout(() => {
+    bot.chat(sellCmd);
+  }, 1500);
+
+  // عند فتح النافذة
+  bot.on('windowOpen', (window) => {
+    currentWindow = window;
+    log(`📦 تم فتح نافذة البيع`);
+    moveItems(window);
+  });
+
+  // عند تحديث النافذة (أغراض جديدة)
+  bot.on('windowUpdate', (window) => {
+    if (window === currentWindow && !isProcessing) {
+      moveItems(window);
+    }
+  });
+
+  log(`🛒 ===== تم إعداد وضع البياع السريع (بدون إغلاق) بنجاح ====`);
+}
     
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
