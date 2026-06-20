@@ -353,9 +353,9 @@ async function createBot() {
             await sleep(5);
           }
 
-          await sleep(25);
+          await sleep(15);
           bot.clickWindow(53, 0, 0);
-          await sleep(25);
+          await sleep(15);
           bot.closeWindow(window);
 
           isSelling = false;
@@ -363,7 +363,7 @@ async function createBot() {
           
           setTimeout(() => {
             bot.chat(sellCmd);
-          }, 250);
+          }, 300);
 
         } catch (err) {
           try { bot.closeWindow(window); } catch(e) {}
