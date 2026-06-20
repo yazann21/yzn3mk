@@ -312,7 +312,7 @@ async function createBot() {
       log(`🛒 ===== بدء وضع البياع (النسخة فائقة السرعة) ====`);
       log(`🛒 نوع البوت: ${config.botType}`);
       log(`🛒 الأمر المستخدم: ${sellCmd}`);
-      log(`🛒 سيتم كتابة الأمر بعد 1.5 ثانية`);
+      log(`🛒 سيتم كتابة الأمر `);
 
       async function autoSell(window) {
         if (isSelling) return;
@@ -353,9 +353,9 @@ async function createBot() {
             await sleep(5);
           }
 
-          await sleep(50);
+          await sleep(25);
           bot.clickWindow(53, 0, 0);
-          await sleep(50);
+          await sleep(25);
           bot.closeWindow(window);
 
           isSelling = false;
@@ -363,7 +363,7 @@ async function createBot() {
           
           setTimeout(() => {
             bot.chat(sellCmd);
-          }, 500);
+          }, 250);
 
         } catch (err) {
           try { bot.closeWindow(window); } catch(e) {}
@@ -375,7 +375,7 @@ async function createBot() {
 
       setTimeout(() => {
         bot.chat(sellCmd);
-      }, 1500);
+      }, 500);
 
       bot.on('windowOpen', (window) => {
         if (isProcessing) return;
