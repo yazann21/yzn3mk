@@ -166,7 +166,6 @@ async function startViewer() {
     viewerStarted = true;
     log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
 
-    // LocalTunnel - مجاني وبدون رمز
     const tunnel = await localtunnel({ port: viewerPort });
     log(`🌍 كاميرا عامة عبر LocalTunnel: ${tunnel.url}`);
 
@@ -223,7 +222,6 @@ function cleanup() {
   currentTarget = null;
 }
 
-// دالة مساعدة للتأخير (للبيع التلقائي)
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -305,130 +303,88 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نسخة فائقة السرعة ==========
-if (config.botType === 'seller') {
-  const sellCmd = process.env.SELL_COMMAND || '/sell';
-  let isSelling = false;
-  let isProcessing = false;
-  let currentWindow = null;
+    // ========== وضع البياع (SELLER MODE) - نسخة فائقة السرعة ==========
+    if (config.botType === 'seller') {
+      const sellCmd = process.env.SELL_COMMAND || '/sell';
+      let isSelling = false;
+      let isProcessing = false;
 
-  log(`🛒 ===== بدء وضع البياع (النسخة فائقة السرعة) ====`);
-  log(`🛒 نوع البوت: ${config.botType}`);
-  log(`🛒 الأمر المستخدم: ${sellCmd}`);
-  log(`🛒 سيتم كتابة الأمر بعد 1.5 ثانية`);
+      log(`🛒 ===== بدء وضع البياع (النسخة فائقة السرعة) ====`);
+      log(`🛒 نوع البوت: ${config.botType}`);
+      log(`🛒 الأمر المستخدم: ${sellCmd}`);
+      log(`🛒 سيتم كتابة الأمر بعد 1.5 ثانية`);
 
-  // دالة لبيع الأغراض بأقصى سرعة
-  async function autoSell(window) {
-    if (isSelling) return;
-    isSelling = true;
-    isProcessing = true;
-    currentWindow = window;
-    
-    try {
-      // 1. جمع الأغراض من المخزون (54-89)
-      const inventorySlots = [];
-      for (let i = 54; i <= 89; i++) {
-        if (window.slots[i]) {
-          inventorySlots.push(i);
-        }
-      }
-
-      // 2. جمع الأماكن الفارغة في قائمة البيع (1-52)
-      const tradeSlots = [];
-      for (let i = 1; i <= 52; i++) {
-        if (!window.slots[i]) {
-          tradeSlots.push(i);
-        }
-      }
-
-      if (inventorySlots.length === 0) {
-        // إغلاق النافذة فوراً وإعادة المحاولة
-        bot.closeWindow(window);
-        isSelling = false;
-        isProcessing = false;
-        setTimeout(() => { bot.chat(sellCmd); }, 1000);
-        return;
-      }
-
-      // 3. نقل الأغراض بسرعة فائقة (تأخير 5ms فقط)
-      const itemsToMove = Math.min(inventorySlots.length, tradeSlots.length);
-      for (let i = 0; i < itemsToMove; i++) {
-        const fromSlot = inventorySlots[i];
-        const toSlot = tradeSlots[i];
+      async function autoSell(window) {
+        if (isSelling) return;
+        isSelling = true;
+        isProcessing = true;
         
-        bot.clickWindow(fromSlot, 0, 0);
-        await sleep(5); // 5ms فقط
-        bot.clickWindow(toSlot, 0, 0);
-        await sleep(5);
+        try {
+          const inventorySlots = [];
+          for (let i = 54; i <= 89; i++) {
+            if (window.slots[i]) {
+              inventorySlots.push(i);
+            }
+          }
+
+          const tradeSlots = [];
+          for (let i = 1; i <= 52; i++) {
+            if (!window.slots[i]) {
+              tradeSlots.push(i);
+            }
+          }
+
+          if (inventorySlots.length === 0) {
+            bot.closeWindow(window);
+            isSelling = false;
+            isProcessing = false;
+            setTimeout(() => { bot.chat(sellCmd); }, 1000);
+            return;
+          }
+
+          const itemsToMove = Math.min(inventorySlots.length, tradeSlots.length);
+          for (let i = 0; i < itemsToMove; i++) {
+            const fromSlot = inventorySlots[i];
+            const toSlot = tradeSlots[i];
+            
+            bot.clickWindow(fromSlot, 0, 0);
+            await sleep(5);
+            bot.clickWindow(toSlot, 0, 0);
+            await sleep(5);
+          }
+
+          await sleep(50);
+          bot.clickWindow(53, 0, 0);
+          await sleep(50);
+          bot.closeWindow(window);
+
+          isSelling = false;
+          isProcessing = false;
+          
+          setTimeout(() => {
+            bot.chat(sellCmd);
+          }, 500);
+
+        } catch (err) {
+          try { bot.closeWindow(window); } catch(e) {}
+          isSelling = false;
+          isProcessing = false;
+          setTimeout(() => { bot.chat(sellCmd); }, 1000);
+        }
       }
 
-      // 4. الضغط على زر البيع (سلوت 53) فوراً
-      await sleep(50); // تأخير بسيط جداً
-      bot.clickWindow(53, 0, 0);
-      await sleep(50);
-
-      // 5. إغلاق النافذة فوراً
-      bot.closeWindow(window);
-
-      // 6. إعادة كتابة الأمر بسرعة
-      isSelling = false;
-      isProcessing = false;
-      
       setTimeout(() => {
         bot.chat(sellCmd);
-      }, 500); // فقط 500ms قبل إعادة الأمر
+      }, 1500);
 
-    } catch (err) {
-      // في حالة الخطأ، نحاول إغلاق النافذة وإعادة المحاولة
-      try { bot.closeWindow(window); } catch(e) {}
-      isSelling = false;
-      isProcessing = false;
-      setTimeout(() => { bot.chat(sellCmd); }, 1000);
+      bot.on('windowOpen', (window) => {
+        if (isProcessing) return;
+        autoSell(window);
+      });
+
+      log(`🛒 ===== تم إعداد وضع البياع فائق السرعة بنجاح ====`);
     }
-  }
-
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  // كتابة الأمر /sell بعد 1.5 ثانية
-  setTimeout(() => {
-    bot.chat(sellCmd);
-  }, 1500);
-
-  // الاستماع لفتح النافذة
-  bot.on('windowOpen', (window) => {
-    if (isProcessing) return;
-    autoSell(window);
-  });
-
-  log(`🛒 ===== تم إعداد وضع البياع فائق السرعة بنجاح ====`);
-}
-  // دالة مساعدة للتأخير
-  function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  // كتابة الأمر /sell
-  setTimeout(() => {
-    log(`💬 كتابة الأمر ${sellCmd} إلى السيرفر`);
-    bot.chat(sellCmd);
-    log(`✅ تم إرسال الأمر ${sellCmd}`);
-  }, 3000);
-
-  // الاستماع لفتح النافذة
-  bot.on('windowOpen', (window) => {
-    if (isProcessing) return; // منع التداخل
-    log(`📦 ===== تم فتح نافذة ====`);
-    log(`📦 عنوان النافذة: ${window.title}`);
-    log(`📦 عدد السلوتات: ${window.slots.length}`);
-
-    // بدء عملية البيع التلقائي
-    autoSell(window);
-  });
-
-  log(`🛒 ===== تم إعداد وضع البياع مع إغلاق النافذة بنجاح ====`);
-}    
+    
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
