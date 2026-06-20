@@ -303,13 +303,7 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نسخة بدون إغلاق (أسرع) ==========
-if (config.botType === 'seller') {
-  const sellCmd = process.env.SELL_COMMAND || '/sell';
-  let isProcessing = false;
-  let currentWindow = null;
-
-  // ========== وضع البياع (SELLER MODE) - النسخة الأسرع مع تحقق مستمر ==========
+// ========== وضع البياع (SELLER MODE) - النسخة الأسرع مع تحقق مستمر ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
