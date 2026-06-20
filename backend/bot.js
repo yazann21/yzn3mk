@@ -352,7 +352,7 @@ if (config.botType === 'seller') {
         }
 
         // 4. الضغط على زر البيع (سلوت 53)
-        await sleep(30);
+        await sleep(200);
         bot.clickWindow(53, 0, 0);
         await sleep(200);
       }
