@@ -59,8 +59,10 @@ db.serialize(() => {
     });
 });
 
+// ========== تخزين روابط الكاميرا لكل بوت ==========
 const botCameraUrls = new Map();
 
+// تسجيل رابط الكاميرا من البوت
 app.post('/api/register-camera-url', (req, res) => {
     const { botId, url } = req.body;
     if (botId && url) {
@@ -72,12 +74,12 @@ app.post('/api/register-camera-url', (req, res) => {
     }
 });
 
+// مسار فتح الكاميرا – إعادة توجيه إلى رابط LocalTunnel
 app.get('/camera/:botId', (req, res) => {
     const botId = parseInt(req.params.botId);
     const cameraUrl = botCameraUrls.get(botId);
     if (cameraUrl) {
-        const targetUrl = cameraUrl.replace(/\/$/, '') + '/view';
-        res.redirect(targetUrl);
+        res.redirect(cameraUrl);
     } else {
         res.status(404).send(`
             <!DOCTYPE html>
@@ -86,13 +88,14 @@ app.get('/camera/:botId', (req, res) => {
             <body>
                 <h1>📷 كاميرا البوت</h1>
                 <p>لم يتم الحصول على رابط الكاميرا العام بعد.</p>
-                <p>تأكد من أن البوت قيد التشغيل وأن متغير <code>NGROK_AUTHTOKEN</code> مضبوط في البيئة.</p>
+                <p>تأكد من أن البوت قيد التشغيل وأن LocalTunnel يعمل بشكل صحيح.</p>
             </body>
             </html>
         `);
     }
 });
 
+// ========== مصادقة المستخدم ==========
 app.get('/auth/login', async (req, res) => {
     try {
         const url = await getAuthUrl();
@@ -130,6 +133,7 @@ app.post('/api/logout', (req, res) => {
     req.session.destroy(() => res.json({ success: true }));
 });
 
+// ========== إدارة البوتات ==========
 app.get('/api/bots', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     db.all('SELECT id, user_id, bot_name, bot_type, server_ip, team_names, version, status, mc_token, mc_username, mc_profile_id, auth_type, sell_command, created_at FROM bots WHERE user_id = ? ORDER BY created_at DESC', [req.session.userId], (err, bots) => {
@@ -192,6 +196,7 @@ app.post('/api/seller-items', (req, res) => {
     res.json({ success: true, items, count: items.length });
 });
 
+// ========== باقي مسارات التحكم ==========
 app.post('/api/stop-bot', (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
     const { botId } = req.body;
