@@ -303,61 +303,99 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - النسخة الأسرع مع تحقق مستمر ==========
+// ========== وضع البياع (SELLER MODE) - النسخة الذكية (نقل كامل) ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
-  let checkInterval = null;
 
-  log(`🛒 ===== بدء وضع البياع (النسخة الأسرع) ====`);
+  log(`🛒 ===== بدء وضع البياع (النسخة الذكية) ====`);
   log(`🛒 نوع البوت: ${config.botType}`);
   log(`🛒 الأمر المستخدم: ${sellCmd}`);
-  log(`🛒 سيتم كتابة الأمر بعد 1.5 ثانية`);
+  log(`🛒 سيتم كتابة الأمر بعد 2 ثانية`);
 
-  // دالة لنقل الأغراض والبيع
-  async function processSell(window) {
+  // دالة لنقل الأغراض كلها دفعة واحدة
+  async function moveAllItems(window) {
     if (isProcessing) return;
     isProcessing = true;
     
     try {
-      // 1. جمع الأغراض من المخزون (54-89)
-      const inventorySlots = [];
+      // 1. جمع كل الأغراض من المخزون (54-89) مع أماكنها
+      const items = [];
       for (let i = 54; i <= 89; i++) {
         if (window.slots[i]) {
-          inventorySlots.push(i);
+          items.push({
+            fromSlot: i,
+            name: window.slots[i].name,
+            count: window.slots[i].count
+          });
         }
       }
 
-      // 2. جمع الأماكن الفارغة في قائمة البيع (1-52)
-      const tradeSlots = [];
-      for (let i = 1; i <= 52; i++) {
-        if (!window.slots[i]) {
-          tradeSlots.push(i);
-        }
+      // 2. إذا ما في أغراض، نوقف
+      if (items.length === 0) {
+        log(`⚠️ لا توجد أغراض في المخزون. انتظار...`);
+        isProcessing = false;
+        return;
       }
 
-      // 3. إذا كان في أغراض في المخزون
-      if (inventorySlots.length > 0) {
-        // نقل الأغراض إلى الأماكن الفارغة
-        const itemsToMove = Math.min(inventorySlots.length, tradeSlots.length);
-        for (let i = 0; i < itemsToMove; i++) {
-          const fromSlot = inventorySlots[i];
-          const toSlot = tradeSlots[i];
-          
-          bot.clickWindow(fromSlot, 0, 0);
-          await sleep(3);
-          bot.clickWindow(toSlot, 0, 0);
-          await sleep(3);
+      log(`📦 تم العثور على ${items.length} غرض/أغراض في المخزون`);
+
+      // 3. نقل الأغراض بسرعة فائقة (حبة حبة لكن بسرعة)
+      let movedCount = 0;
+      for (const item of items) {
+        // البحث عن أول مكان فارغ في قائمة البيع (1-52)
+        let emptySlot = -1;
+        for (let i = 1; i <= 52; i++) {
+          if (!window.slots[i]) {
+            emptySlot = i;
+            break;
+          }
         }
 
-        // 4. الضغط على زر البيع (سلوت 53)
+        // إذا كانت قائمة البيع ممتلئة، نضغط بيع أولاً
+        if (emptySlot === -1) {
+          log(`🛒 قائمة البيع ممتلئة! الضغط على زر البيع...`);
+          bot.clickWindow(53, 0, 0);
+          await sleep(100);
+          // بعد البيع، نبحث مجدداً عن مكان فارغ
+          for (let i = 1; i <= 52; i++) {
+            if (!window.slots[i]) {
+              emptySlot = i;
+              break;
+            }
+          }
+          // إذا ما زال مافيه مكان، نوقف
+          if (emptySlot === -1) {
+            log(`⚠️ لا يوجد مكان فارغ في قائمة البيع!`);
+            isProcessing = false;
+            return;
+          }
+        }
+
+        // نقل الغرض (نقرة عادية)
+        bot.clickWindow(item.fromSlot, 0, 0);
         await sleep(5);
-        bot.clickWindow(53, 0, 0);
+        bot.clickWindow(emptySlot, 0, 0);
         await sleep(5);
+        movedCount++;
       }
 
+      log(`✅ تم نقل ${movedCount} غرض/أغراض إلى قائمة البيع`);
+
+      // 4. بعد نقل كل الأغراض، نضغط على زر البيع
+      await sleep(50);
+      log(`🛒 الضغط على زر البيع (سلوت 53)...`);
+      bot.clickWindow(53, 0, 0);
+      await sleep(50);
+      log(`✅ تم البيع بنجاح!`);
+
+      // 5. نتحقق من وجود أغراض جديدة في المخزون (لأن السيرفر رجعها)
       isProcessing = false;
+      // نكرر العملية فوراً
+      setTimeout(() => {
+        if (currentWindow) moveAllItems(currentWindow);
+      }, 200);
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
@@ -365,70 +403,24 @@ if (config.botType === 'seller') {
     }
   }
 
-  // دالة التحقق المستمر (تشغيل كل 100ms)
-  function startContinuousCheck(window) {
-    if (checkInterval) clearInterval(checkInterval);
-    
-    checkInterval = setInterval(() => {
-      if (!currentWindow) return;
-      if (isProcessing) return;
-      
-      // التحقق من وجود أغراض في المخزون
-      let hasItems = false;
-      for (let i = 54; i <= 89; i++) {
-        if (currentWindow.slots[i]) {
-          hasItems = true;
-          break;
-        }
-      }
-      
-      // التحقق من وجود أماكن فارغة في قائمة البيع
-      let hasEmptySlots = false;
-      for (let i = 1; i <= 52; i++) {
-        if (!currentWindow.slots[i]) {
-          hasEmptySlots = true;
-          break;
-        }
-      }
-
-      // إذا كان في أغراض وأماكن فارغة، نبدأ البيع
-      if (hasItems && hasEmptySlots) {
-        processSell(currentWindow);
-      }
-    }, 50); // 100sms = 0.1 ثانية (سريع جداً)
-  }
-
   // كتابة الأمر /sell
   setTimeout(() => {
+    log(`💬 كتابة الأمر ${sellCmd}`);
     bot.chat(sellCmd);
-  }, 150);
+  }, 2000);
 
   // عند فتح النافذة
   bot.on('windowOpen', (window) => {
     currentWindow = window;
-    log(`📦 تم فتح نافذة البيع (تبقى مفتوحة)`);
-    // بدء التحقق المستمر
-    startContinuousCheck(window);
-    // تنفيذ البيع فوراً
-    setTimeout(() => processSell(window), 100);
+    log(`📦 تم فتح نافذة البيع`);
+    // بدء النقل بعد 200ms (ننتظر استقرار النافذة)
+    setTimeout(() => {
+      moveAllItems(window);
+    }, 200);
   });
 
-  // عند إغلاق النافذة (في حال حصل)
-  bot.on('windowClose', (window) => {
-    if (window === currentWindow) {
-      log(`🚪 النافذة أغلقت، إعادة فتح...`);
-      if (checkInterval) clearInterval(checkInterval);
-      currentWindow = null;
-      // إعادة فتح النافذة
-      setTimeout(() => {
-        bot.chat(sellCmd);
-      }, 500);
-    }
-  });
-
-  log(`🛒 ===== تم إعداد وضع البياع الأسرع بنجاح ====`);
-}
-    
+  log(`🛒 ===== تم إعداد وضع البياع الذكي بنجاح ====`);
+}    
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
