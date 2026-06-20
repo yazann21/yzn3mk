@@ -303,14 +303,13 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - النسخة الذكية بالخطوات (0-52) ==========
+// ========== وضع البياع (SELLER MODE) - نسخة ذكية (ستاكات فقط) ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
-  let step = 0;
 
-  log(`🛒 ===== بدء وضع البياع (النسخة الذكية بالخطوات - 0-52) ====`);
+  log(`🛒 ===== بدء وضع البياع (النسخة الذكية - ستاكات فقط) ====`);
   log(`🛒 نوع البوت: ${config.botType}`);
   log(`🛒 الأمر المستخدم: ${sellCmd}`);
   log(`🛒 سيتم كتابة الأمر بعد 2 ثانية`);
@@ -318,7 +317,7 @@ if (config.botType === 'seller') {
   // دالة لجلب الأماكن الفارغة في قائمة البيع (0-52)
   function getEmptySlots(window) {
     const slots = [];
-    for (let i = 0; i <= 52; i++) {
+    for (let i = 0; i <= 44; i++) {
       if (!window.slots[i]) {
         slots.push(i);
       }
@@ -341,9 +340,9 @@ if (config.botType === 'seller') {
     return items;
   }
 
-  // دالة للتحقق من امتلاء قائمة البيع (0-52)
+  // دالة للتحقق من امتلاء قائمة البيع (0-44)
   function isTradeFull(window) {
-    for (let i = 0; i <= 52; i++) {
+    for (let i = 0; i <= 44; i++) {
       if (!window.slots[i]) return false;
     }
     return true;
@@ -352,7 +351,7 @@ if (config.botType === 'seller') {
   // دالة لحساب عدد الأغراض في قائمة البيع
   function countTradeItems(window) {
     let count = 0;
-    for (let i = 0; i <= 52; i++) {
+    for (let i = 0; i <= 44; i++) {
       if (window.slots[i]) count++;
     }
     return count;
@@ -361,30 +360,36 @@ if (config.botType === 'seller') {
   async function executeSell(window) {
     if (isProcessing) return;
     isProcessing = true;
-    step = 1;
     
     try {
-      // ===== الخطوة 1: نقل الأغراض من المخزون إلى قائمة البيع =====
+      // 1. جلب الأغراض من المخزون
       let items = getInventoryItems(window);
-      let emptySlots = getEmptySlots(window);
       
-      if (items.length === 0) {
-        log(`⏳ لا توجد أغراض في المخزون. انتظار حتى تصل أغراض جديدة...`);
+      // 2. فلترة الأغراض: فقط الستاكات الكاملة (64 قطعة) أو الأغراض المكدسة
+      const fullStacks = items.filter(item => item.count === 64);
+      const partialItems = items.filter(item => item.count < 64 && item.count > 0);
+      
+      if (fullStacks.length === 0) {
+        log(`⏳ لا توجد ستاكات كاملة (64 قطعة) في المخزون.`);
+        log(`📦 يوجد ${partialItems.length} غرض غير مكتمل (أقل من 64 قطعة) سيتم تجاهلها.`);
         isProcessing = false;
         setTimeout(() => {
           if (currentWindow) executeSell(currentWindow);
-        }, 3000);
+        }, 5000); // ننتظر 5 ثواني عشان يجمع ستاكات
         return;
       }
 
-      log(`📦 يوجد ${items.length} غرض في المخزون، و ${emptySlots.length} مكان فارغ في قائمة البيع (0-52)`);
-
-      // نقل الأغراض بسرعة
+      // 3. نقل الستاكات الكاملة فقط
+      let emptySlots = getEmptySlots(window);
       let movedCount = 0;
-      let itemIndex = 0;
-      while (itemIndex < items.length && itemIndex < emptySlots.length) {
-        const item = items[itemIndex];
-        const toSlot = emptySlots[itemIndex];
+      let itemsToMove = Math.min(fullStacks.length, emptySlots.length);
+      
+      log(`📦 يوجد ${fullStacks.length} ستاك كامل (64 قطعة) في المخزون`);
+      log(`📦 ${emptySlots.length} مكان فارغ في قائمة البيع (0-44)`);
+
+      for (let i = 0; i < itemsToMove; i++) {
+        const item = fullStacks[i];
+        const toSlot = emptySlots[i];
         
         if (window.slots[item.slot]) {
           bot.clickWindow(item.slot, 0, 0);
@@ -392,50 +397,15 @@ if (config.botType === 'seller') {
           bot.clickWindow(toSlot, 0, 0);
           await sleep(10);
           movedCount++;
+          log(`📤 نقل ${item.name} × ${item.count} من سلوت ${item.slot} إلى ${toSlot}`);
         }
-        itemIndex++;
       }
 
-      log(`✅ تم نقل ${movedCount} غرض إلى قائمة البيع (${countTradeItems(window)}/53 خانات)`);
+      log(`✅ تم نقل ${movedCount} ستاك كامل إلى قائمة البيع (${countTradeItems(window)}/45 خانات)`);
 
-      // ===== الخطوة 2: التحقق من امتلاء قائمة البيع =====
+      // 4. التحقق من امتلاء قائمة البيع
       if (isTradeFull(window)) {
-        const totalItems = countTradeItems(window);
-        log(`🛒 قائمة البيع ممتلئة بالكامل! (${totalItems} غرض) بيع...`);
-        step = 3;
-        bot.clickWindow(53, 0, 0);
-        await sleep(100);
-        log(`✅ تم الضغط على زر البيع!`);
-        
-        isProcessing = false;
-        setTimeout(() => {
-          if (currentWindow) executeSell(currentWindow);
-        }, 500);
-        return;
-      }
-
-      // ===== الخطوة 3: إذا كان في أغراض بالمخزون ونقص في قائمة البيع =====
-      log(`🔄 جاري التحقق من وجود أغراض جديدة في المخزون...`);
-      
-      // ننتظر 2 ثانية لالتقاط الأغراض من الأرض
-      await sleep(2000);
-      
-      items = getInventoryItems(window);
-      emptySlots = getEmptySlots(window);
-      
-      if (items.length > 0 && emptySlots.length > 0) {
-        log(`📦 تم العثور على ${items.length} غرض جديد في المخزون`);
-        step = 1;
-        isProcessing = false;
-        executeSell(window);
-        return;
-      }
-
-      // ===== الخطوة 4: إذا كانت قائمة البيع ممتلئة =====
-      if (isTradeFull(window)) {
-        const totalItems = countTradeItems(window);
-        log(`🛒 قائمة البيع ممتلئة! (${totalItems} غرض) بيع...`);
-        step = 3;
+        log(`🛒 قائمة البيع ممتلئة! (45 غرض) بيع...`);
         bot.clickWindow(53, 0, 0);
         await sleep(100);
         log(`✅ تم البيع!`);
@@ -447,12 +417,22 @@ if (config.botType === 'seller') {
         return;
       }
 
-      // ===== الخطوة 5: إذا لم يحدث شيء، نعيد المحاولة =====
-      log(`⏳ انتظار وصول أغراض جديدة... (قائمة البيع ${countTradeItems(window)}/53)`);
+      // 5. إذا بقيت أغراض في المخزون وأماكن فارغة، نكرر
+      items = getInventoryItems(window);
+      fullStacks = items.filter(item => item.count === 64);
+      
+      if (fullStacks.length > 0 && !isTradeFull(window)) {
+        isProcessing = false;
+        executeSell(window);
+        return;
+      }
+
+      // 6. إذا لم يحدث شيء، ننتظر
+      log(`⏳ انتظار ستاكات جديدة... (قائمة البيع ${countTradeItems(window)}/45)`);
       isProcessing = false;
       setTimeout(() => {
         if (currentWindow) executeSell(currentWindow);
-      }, 2000);
+      }, 5000);
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
@@ -472,8 +452,7 @@ if (config.botType === 'seller') {
   // عند فتح النافذة
   bot.on('windowOpen', (window) => {
     currentWindow = window;
-    log(`📦 تم فتح نافذة البيع (قائمة البيع: 0-52، زر البيع: 53)`);
-    step = 0;
+    log(`📦 تم فتح نافذة البيع (قائمة البيع: 0-44، زر البيع: 53)`);
     setTimeout(() => {
       executeSell(window);
     }, 300);
@@ -489,7 +468,7 @@ if (config.botType === 'seller') {
     }
   });
 
-  log(`🛒 ===== تم إعداد وضع البياع الذكي (0-52) بنجاح ====`);
+  log(`🛒 ===== تم إعداد وضع البياع الذكي (ستاكات فقط) بنجاح ====`);
 }  
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
