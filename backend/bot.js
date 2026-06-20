@@ -348,21 +348,21 @@ if (config.botType === 'seller') {
         const toSlot = tradeSlots[i];
         
         bot.clickWindow(fromSlot, 0, 0);
-        await sleep(5);
+        await sleep(3);
         bot.clickWindow(toSlot, 0, 0);
-        await sleep(5);
+        await sleep(3);
       }
 
       // الضغط على زر البيع (سلوت 53)
-      await sleep(50);
+      await sleep(10);
       bot.clickWindow(53, 0, 0);
-      await sleep(50);
+      await sleep(10);
 
       isProcessing = false;
       // بعد البيع، نتحقق مرة أخرى من وجود أغراض جديدة
       setTimeout(() => {
         if (currentWindow) moveItems(currentWindow);
-      }, 500);
+      }, 50);
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
