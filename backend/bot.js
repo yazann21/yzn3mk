@@ -303,23 +303,22 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - النظام الذكي المتطور ==========
+// ========== وضع البياع (SELLER MODE) - النسخة الذكية بالخطوات (0-52) ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
-  let saleHistory = [];
-  let targetItems = 2800; // الهدف: 2.8K قطعة
+  let step = 0;
 
-  log(`🛒 ===== بدء وضع البياع (النظام الذكي المتطور) ====`);
+  log(`🛒 ===== بدء وضع البياع (النسخة الذكية بالخطوات - 0-52) ====`);
   log(`🛒 نوع البوت: ${config.botType}`);
   log(`🛒 الأمر المستخدم: ${sellCmd}`);
-  log(`🎯 الهدف: بيع ${targetItems} قطعة في كل دورة`);
+  log(`🛒 سيتم كتابة الأمر بعد 2 ثانية`);
 
-  // دالة لجلب الأماكن الفارغة في قائمة البيع (0-44 فقط)
-  function getEmptyTradeSlots(window) {
+  // دالة لجلب الأماكن الفارغة في قائمة البيع (0-52)
+  function getEmptySlots(window) {
     const slots = [];
-    for (let i = 0; i <= 44; i++) {
+    for (let i = 0; i <= 52; i++) {
       if (!window.slots[i]) {
         slots.push(i);
       }
@@ -342,20 +341,9 @@ if (config.botType === 'seller') {
     return items;
   }
 
-  // دالة لحساب العدد الإجمالي للقطع في المخزون
-  function countTotalItems(window) {
-    let total = 0;
-    for (let i = 54; i <= 89; i++) {
-      if (window.slots[i]) {
-        total += window.slots[i].count;
-      }
-    }
-    return total;
-  }
-
-  // دالة للتحقق من امتلاء قائمة البيع (0-44)
+  // دالة للتحقق من امتلاء قائمة البيع (0-52)
   function isTradeFull(window) {
-    for (let i = 0; i <= 44; i++) {
+    for (let i = 0; i <= 52; i++) {
       if (!window.slots[i]) return false;
     }
     return true;
@@ -364,192 +352,144 @@ if (config.botType === 'seller') {
   // دالة لحساب عدد الأغراض في قائمة البيع
   function countTradeItems(window) {
     let count = 0;
-    for (let i = 0; i <= 44; i++) {
+    for (let i = 0; i <= 52; i++) {
       if (window.slots[i]) count++;
     }
     return count;
   }
 
-  // دالة لحساب إجمالي القطع في قائمة البيع
-  function countTradeTotalItems(window) {
-    let total = 0;
-    for (let i = 0; i <= 44; i++) {
-      if (window.slots[i]) {
-        total += window.slots[i].count;
-      }
-    }
-    return total;
-  }
-
-  // ===== تحليل الوضع الحالي =====
-  function analyzeState(window) {
-    const inventoryCount = countTotalItems(window);
-    const tradeCount = countTradeItems(window);
-    const tradeTotal = countTradeTotalItems(window);
-    const isFull = isTradeFull(window);
-    const emptySlots = getEmptyTradeSlots(window).length;
-    
-    return {
-      inventoryCount,
-      tradeCount,
-      tradeTotal,
-      isFull,
-      emptySlots,
-      needToFill: 45 - tradeCount,
-      canSell: isFull,
-      hasItems: inventoryCount > 0
-    };
-  }
-
   async function executeSell(window) {
     if (isProcessing) return;
     isProcessing = true;
+    step = 1;
     
     try {
-      const state = analyzeState(window);
+      // ===== الخطوة 1: نقل الأغراض من المخزون إلى قائمة البيع =====
+      let items = getInventoryItems(window);
+      let emptySlots = getEmptySlots(window);
       
-      // ===== البوت يفكر: "كم قطعة بعت؟" =====
-      if (state.tradeTotal > 0) {
-        log(`🧠 التحليل: قطع=${state.inventoryCount}, قائمة البيع=${state.tradeTotal} قطعة, أغراض=${state.tradeCount}/45`);
-      } else {
-        log(`🧠 التحليل: مخزون=${state.inventoryCount}, قائمة البيع=${state.tradeCount}/45, فارغ=${state.emptySlots}`);
+      if (items.length === 0) {
+        log(`⏳ لا توجد أغراض في المخزون. انتظار حتى تصل أغراض جديدة...`);
+        isProcessing = false;
+        setTimeout(() => {
+          if (currentWindow) executeSell(currentWindow);
+        }, 3000);
+        return;
       }
 
-      // ===== الحالة 1: قائمة البيع ممتلئة → بيع =====
-      if (state.canSell) {
-        const totalItems = state.tradeTotal;
-        log(`🛒 قائمة البيع ممتلئة! (${totalItems} قطعة) بيع...`);
+      log(`📦 يوجد ${items.length} غرض في المخزون، و ${emptySlots.length} مكان فارغ في قائمة البيع (0-52)`);
+
+      // نقل الأغراض بسرعة
+      let movedCount = 0;
+      let itemIndex = 0;
+      while (itemIndex < items.length && itemIndex < emptySlots.length) {
+        const item = items[itemIndex];
+        const toSlot = emptySlots[itemIndex];
+        
+        if (window.slots[item.slot]) {
+          bot.clickWindow(item.slot, 0, 0);
+          await sleep(10);
+          bot.clickWindow(toSlot, 0, 0);
+          await sleep(10);
+          movedCount++;
+        }
+        itemIndex++;
+      }
+
+      log(`✅ تم نقل ${movedCount} غرض إلى قائمة البيع (${countTradeItems(window)}/53 خانات)`);
+
+      // ===== الخطوة 2: التحقق من امتلاء قائمة البيع =====
+      if (isTradeFull(window)) {
+        const totalItems = countTradeItems(window);
+        log(`🛒 قائمة البيع ممتلئة بالكامل! (${totalItems} غرض) بيع...`);
+        step = 3;
         bot.clickWindow(53, 0, 0);
-        await sleep(20);
-        log(`✅ تم البيع! (${totalItems} قطعة)`);
-        
-        // تسجيل كمية البيع
-        saleHistory.push(totalItems);
-        if (saleHistory.length > 10) saleHistory.shift();
+        await sleep(100);
+        log(`✅ تم الضغط على زر البيع!`);
         
         isProcessing = false;
-        if (currentWindow) {
-          setTimeout(() => executeSell(currentWindow), 50);
-        }
+        setTimeout(() => {
+          if (currentWindow) executeSell(currentWindow);
+        }, 500);
         return;
       }
 
-      // ===== الحالة 2: في أغراض بالمخزون → انقلها =====
-      if (state.hasItems) {
-        const items = getInventoryItems(window);
-        const emptySlots = getEmptyTradeSlots(window);
-        const itemsToMove = Math.min(items.length, emptySlots.length);
-        
-        if (itemsToMove > 0) {
-          // نقل الأغراض بسرعة
-          for (let i = 0; i < itemsToMove; i++) {
-            const fromSlot = items[i].slot;
-            const toSlot = emptySlots[i];
-            
-            if (window.slots[fromSlot]) {
-              bot.clickWindow(fromSlot, 0, 0);
-              await sleep(2);
-              bot.clickWindow(toSlot, 0, 0);
-              await sleep(2);
-            }
-          }
-          log(`✅ تم نقل ${itemsToMove} غرض`);
-          
-          isProcessing = false;
-          if (currentWindow) {
-            setTimeout(() => executeSell(currentWindow), 10);
-          }
-          return;
-        }
-      }
-
-      // ===== الحالة 3: المخزون فاضي وقائمة البيع مش متعبة → انتظر =====
-      if (!state.hasItems && !state.canSell) {
-        log(`⏳ المخزون فاضي، قائمة البيع ${state.tradeCount}/45. بستنى أغراض من الأرض...`);
-        
-        let waitCycles = 0;
-        let foundItems = false;
-        
-        while (!foundItems && !state.canSell) {
-          await sleep(200);
-          const newState = analyzeState(window);
-          
-          if (newState.hasItems) {
-            log(`📦 وصلت أغراض جديدة! (${newState.inventoryCount} قطعة)`);
-            foundItems = true;
-            break;
-          }
-          
-          if (newState.canSell) {
-            log(`📦 قائمة البيع امتلأت!`);
-            foundItems = true;
-            break;
-          }
-          
-          waitCycles++;
-          if (waitCycles % 25 === 0) {
-            log(`⏳ لسا مستني أغراض... (${waitCycles * 0.2} ثانية)`);
-          }
-        }
-        
+      // ===== الخطوة 3: إذا كان في أغراض بالمخزون ونقص في قائمة البيع =====
+      log(`🔄 جاري التحقق من وجود أغراض جديدة في المخزون...`);
+      
+      // ننتظر 2 ثانية لالتقاط الأغراض من الأرض
+      await sleep(2000);
+      
+      items = getInventoryItems(window);
+      emptySlots = getEmptySlots(window);
+      
+      if (items.length > 0 && emptySlots.length > 0) {
+        log(`📦 تم العثور على ${items.length} غرض جديد في المخزون`);
+        step = 1;
         isProcessing = false;
-        if (currentWindow) {
-          setTimeout(() => executeSell(currentWindow), 50);
-        }
+        executeSell(window);
         return;
       }
 
+      // ===== الخطوة 4: إذا كانت قائمة البيع ممتلئة =====
+      if (isTradeFull(window)) {
+        const totalItems = countTradeItems(window);
+        log(`🛒 قائمة البيع ممتلئة! (${totalItems} غرض) بيع...`);
+        step = 3;
+        bot.clickWindow(53, 0, 0);
+        await sleep(100);
+        log(`✅ تم البيع!`);
+        
+        isProcessing = false;
+        setTimeout(() => {
+          if (currentWindow) executeSell(currentWindow);
+        }, 500);
+        return;
+      }
+
+      // ===== الخطوة 5: إذا لم يحدث شيء، نعيد المحاولة =====
+      log(`⏳ انتظار وصول أغراض جديدة... (قائمة البيع ${countTradeItems(window)}/53)`);
       isProcessing = false;
-      if (currentWindow) {
-        setTimeout(() => executeSell(currentWindow), 50);
-      }
+      setTimeout(() => {
+        if (currentWindow) executeSell(currentWindow);
+      }, 2000);
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
       isProcessing = false;
-      if (currentWindow) {
-        setTimeout(() => executeSell(currentWindow), 100);
-      }
+      setTimeout(() => {
+        if (currentWindow) executeSell(currentWindow);
+      }, 2000);
     }
   }
 
-  // كتابة الأمر /sell بعد 1.5 ثانية
+  // كتابة الأمر /sell
   setTimeout(() => {
     log(`💬 كتابة الأمر ${sellCmd}`);
     bot.chat(sellCmd);
-  }, 1500);
+  }, 2000);
 
   // عند فتح النافذة
   bot.on('windowOpen', (window) => {
     currentWindow = window;
-    log(`📦 تم فتح نافذة البيع`);
+    log(`📦 تم فتح نافذة البيع (قائمة البيع: 0-52، زر البيع: 53)`);
+    step = 0;
     setTimeout(() => {
       executeSell(window);
-    }, 100);
+    }, 300);
   });
 
-  // عند إغلاق النافذة
   bot.on('windowClose', (window) => {
     if (window === currentWindow) {
-      log(`🚪 النافذة أغلقت! رح أفتحها تاني...`);
+      log(`🚪 النافذة أغلقت! إعادة فتح...`);
       currentWindow = null;
-      isProcessing = false;
       setTimeout(() => {
         bot.chat(sellCmd);
-      }, 300);
+      }, 1000);
     }
   });
 
-  // عرض إحصائيات البيع كل دقيقة
-  setInterval(() => {
-    if (saleHistory.length > 0) {
-      const avg = saleHistory.reduce((a, b) => a + b, 0) / saleHistory.length;
-      const total = saleHistory.reduce((a, b) => a + b, 0);
-      log(`📊 إحصائيات: ${saleHistory.length} عملية بيع، متوسط ${Math.round(avg)} قطعة، إجمالي ${total} قطعة`);
-    }
-  }, 60000);
-
-  log(`🛒 ===== تم إعداد البوت الذكي المتطور بنجاح =====`);
+  log(`🛒 ===== تم إعداد وضع البياع الذكي (0-52) بنجاح ====`);
 }  
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
