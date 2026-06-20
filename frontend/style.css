@@ -1039,3 +1039,57 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
         font-size: 14px;
     }
 }
+/* === إصلاح نهائي لخيارات الحسابات (عمودي) === */
+.auth-options-vertical,
+.auth-options-vertical .input-group,
+.auth-options-vertical .input-group.floating {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 12px !important;
+}
+
+.auth-option-vertical {
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    padding: 12px 16px !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    width: 100% !important;
+    transition: all 0.2s ease !important;
+}
+
+.auth-option-vertical:hover {
+    background: rgba(124, 58, 237, 0.12) !important;
+    transform: translateX(4px) !important;
+}
+
+.auth-option-vertical input[type="radio"] {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+    cursor: pointer !important;
+    accent-color: #7c3aed !important;
+    flex-shrink: 0 !important;
+}
+
+.auth-option-vertical span {
+    font-size: 15px !important;
+    font-weight: 500 !important;
+    color: #ffffff !important;
+}
+
+@media (max-width: 600px) {
+    .auth-options-vertical {
+        gap: 8px !important;
+    }
+    .auth-option-vertical {
+        padding: 10px 12px !important;
+    }
+    .auth-option-vertical span {
+        font-size: 14px !important;
+    }
+}
