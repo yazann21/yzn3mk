@@ -353,9 +353,9 @@ async function createBot() {
             await sleep(5);
           }
 
-          await sleep(100);
+          await sleep(150);
           bot.clickWindow(53, 0, 0);
-          await sleep(100);
+          await sleep(150);
           bot.closeWindow(window);
 
           isSelling = false;
