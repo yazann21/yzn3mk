@@ -348,14 +348,14 @@ async function createBot() {
             const toSlot = tradeSlots[i];
             
             bot.clickWindow(fromSlot, 0, 0);
-            await sleep(3);
+            await sleep(2);
             bot.clickWindow(toSlot, 0, 0);
-            await sleep(3);
+            await sleep(2);
           }
 
-          await sleep(50);
+          await sleep(60);
           bot.clickWindow(53, 0, 0);
-          await sleep(50);
+          await sleep(60);
           bot.closeWindow(window);
 
           isSelling = false;
