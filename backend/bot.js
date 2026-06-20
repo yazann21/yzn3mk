@@ -354,15 +354,15 @@ if (config.botType === 'seller') {
       }
 
       // الضغط على زر البيع (سلوت 53)
-      await sleep(10);
+      await sleep(30);
       bot.clickWindow(53, 0, 0);
-      await sleep(10);
+      await sleep(30);
 
       isProcessing = false;
       // بعد البيع، نتحقق مرة أخرى من وجود أغراض جديدة
       setTimeout(() => {
         if (currentWindow) moveItems(currentWindow);
-      }, 50);
+      }, 200);
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
