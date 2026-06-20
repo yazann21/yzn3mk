@@ -346,15 +346,15 @@ if (config.botType === 'seller') {
           const toSlot = tradeSlots[i];
           
           bot.clickWindow(fromSlot, 0, 0);
-          await sleep(3);
+          await sleep(2);
           bot.clickWindow(toSlot, 0, 0);
           await sleep(3);
         }
 
         // 4. الضغط على زر البيع (سلوت 53)
-        await sleep(200);
+        await sleep(70);
         bot.clickWindow(53, 0, 0);
-        await sleep(200);
+        await sleep(80);
       }
 
       isProcessing = false;
@@ -395,7 +395,7 @@ if (config.botType === 'seller') {
       if (hasItems && hasEmptySlots) {
         processSell(currentWindow);
       }
-    }, 100); // 100ms = 0.1 ثانية (سريع جداً)
+    }, 500); // 100ms = 0.1 ثانية (سريع جداً)
   }
 
   // كتابة الأمر /sell
