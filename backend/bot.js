@@ -305,13 +305,14 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نسخة سريعة ومتكررة ==========
+// ========== وضع البياع (SELLER MODE) - نسخة مع إغلاق النافذة ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isSelling = false;
   let isProcessing = false;
+  let currentWindow = null;
 
-  log(`🛒 ===== بدء وضع البياع (النسخة السريعة) ====`);
+  log(`🛒 ===== بدء وضع البياع (نسخة إغلاق النافذة) ====`);
   log(`🛒 نوع البوت: ${config.botType}`);
   log(`🛒 الأمر المستخدم: ${sellCmd}`);
   log(`🛒 سيتم كتابة الأمر بعد 3 ثوانٍ`);
@@ -321,6 +322,7 @@ if (config.botType === 'seller') {
     if (isSelling) return;
     isSelling = true;
     isProcessing = true;
+    currentWindow = window;
     
     try {
       log(`🔄 بدء عملية البيع التلقائي...`);
@@ -345,18 +347,21 @@ if (config.botType === 'seller') {
       log(`📦 عدد الأماكن الفارغة في قائمة البيع: ${tradeSlots.length}`);
 
       if (inventorySlots.length === 0) {
-        log(`⚠️ لا توجد أغراض في المخزون. سيتم إعادة المحاولة بعد 5 ثوانٍ.`);
+        log(`⚠️ لا توجد أغراض في المخزون. سيتم إغلاق النافذة وإعادة المحاولة.`);
+        // إغلاق النافذة
+        bot.closeWindow(window);
+        await sleep(500);
         isSelling = false;
         isProcessing = false;
-        // إعادة طلب الأمر /sell بعد 5 ثوانٍ
+        // إعادة طلب الأمر بعد 3 ثوانٍ
         setTimeout(() => {
           log(`💬 إعادة كتابة الأمر ${sellCmd}...`);
           bot.chat(sellCmd);
-        }, 5000);
+        }, 3000);
         return;
       }
 
-      // 3. نقل الأغراض بسرعة (دفعة واحدة)
+      // 3. نقل الأغراض بسرعة
       const itemsToMove = Math.min(inventorySlots.length, tradeSlots.length);
       log(`🔄 جاري نقل ${itemsToMove} غرض/أغراض...`);
 
@@ -365,7 +370,7 @@ if (config.botType === 'seller') {
         const toSlot = tradeSlots[i];
         
         bot.clickWindow(fromSlot, 0, 0);
-        await sleep(50); // تأخير 50ms فقط (سريع جداً)
+        await sleep(50);
         bot.clickWindow(toSlot, 0, 0);
         await sleep(50);
       }
@@ -376,10 +381,16 @@ if (config.botType === 'seller') {
       await sleep(300);
       log(`🛒 الضغط على زر البيع (سلوت 53)...`);
       bot.clickWindow(53, 0, 0);
-      await sleep(300);
+      await sleep(500);
       log(`✅ تم الضغط على زر البيع بنجاح!`);
 
-      // 5. إعادة طلب الأمر /sell لتكرار العملية
+      // 5. إغلاق النافذة
+      log(`🚪 إغلاق النافذة...`);
+      bot.closeWindow(window);
+      await sleep(500);
+      log(`✅ تم إغلاق النافذة.`);
+
+      // 6. إعادة طلب الأمر /sell لتكرار العملية
       isSelling = false;
       isProcessing = false;
       
@@ -393,6 +404,10 @@ if (config.botType === 'seller') {
       log(`⚠️ خطأ أثناء البيع: ${err.message}`);
       isSelling = false;
       isProcessing = false;
+      // محاولة إغلاق النافذة في حالة الخطأ
+      if (window) {
+        try { bot.closeWindow(window); } catch(e) {}
+      }
     }
   }
 
@@ -419,9 +434,8 @@ if (config.botType === 'seller') {
     autoSell(window);
   });
 
-  log(`🛒 ===== تم إعداد وضع البياع السريع بنجاح ====`);
-}
-    
+  log(`🛒 ===== تم إعداد وضع البياع مع إغلاق النافذة بنجاح ====`);
+}    
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
