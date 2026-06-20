@@ -303,14 +303,15 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نظام ذكي بالكامل ==========
+// ========== وضع البياع (SELLER MODE) - النظام الذكي الذي يفكر ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
-  let isActive = true;
+  let lastSaleCount = 0;
+  let consecutiveEmptySales = 0;
 
-  log(`🛒 ===== بدء وضع البياع (نظام ذكي بالكامل) ====`);
+  log(`🛒 ===== بدء وضع البياع (النظام الذكي) ====`);
   log(`🛒 نوع البوت: ${config.botType}`);
   log(`🛒 الأمر المستخدم: ${sellCmd}`);
 
@@ -330,11 +331,7 @@ if (config.botType === 'seller') {
     const items = [];
     for (let i = 54; i <= 89; i++) {
       if (window.slots[i]) {
-        items.push({ 
-          slot: i, 
-          name: window.slots[i].name, 
-          count: window.slots[i].count 
-        });
+        items.push({ slot: i, name: window.slots[i].name, count: window.slots[i].count });
       }
     }
     return items;
@@ -366,127 +363,136 @@ if (config.botType === 'seller') {
     return count;
   }
 
+  // ===== البوت يسأل نفسه: "كم معي أغراض؟" =====
+  function analyzeState(window) {
+    const inventoryCount = countInventoryItems(window);
+    const tradeCount = countTradeItems(window);
+    const isFull = isTradeFull(window);
+    const emptySlots = getEmptyTradeSlots(window).length;
+    
+    return {
+      inventoryCount,
+      tradeCount,
+      isFull,
+      emptySlots,
+      // البوت يقول: "كم باقي عشان أبيع؟"
+      needToFill: 45 - tradeCount,
+      // البوت يقول: "هل قائمة البيع ممتلئة؟"
+      canSell: isFull,
+      // البوت يقول: "هل عندي أغراض بالمخزون؟"
+      hasItems: inventoryCount > 0
+    };
+  }
+
   async function executeSell(window) {
-    if (isProcessing || !isActive) return;
+    if (isProcessing) return;
     isProcessing = true;
     
     try {
-      // 1. جلب البيانات الحالية
-      let items = getInventoryItems(window);
-      let emptySlots = getEmptyTradeSlots(window);
-      let tradeCount = countTradeItems(window);
-      let inventoryCount = countInventoryItems(window);
+      // ===== البوت يسأل: "شو الوضع؟" =====
+      const state = analyzeState(window);
+      log(`🧠 التحليل: مخزون=${state.inventoryCount}, قائمة البيع=${state.tradeCount}/45, فارغ=${state.emptySlots}`);
 
-      // 2. إذا كان المخزون فارغاً، انتظر حتى تصل أغراض
-      while (inventoryCount === 0) {
-        log(`⏳ انتظار وصول أغراض من الأرض... (المخزون فارغ)`);
-        await sleep(200); // انتظار قصير جداً للتحقق
-        items = getInventoryItems(window);
-        inventoryCount = items.length;
-        // لو السيرفر ما زال يعطي أغراض جديدة، بنكمل
-        if (inventoryCount > 0) break;
-      }
-
-      // 3. إذا كان في أغراض بالمخزون، ننقلها
-      if (inventoryCount > 0) {
-        // نقل الأغراض بسرعة فائقة
-        const itemsToMove = Math.min(inventoryCount, emptySlots.length);
-        for (let i = 0; i < itemsToMove; i++) {
-          const fromSlot = items[i].slot;
-          const toSlot = emptySlots[i];
-          
-          if (window.slots[fromSlot]) {
-            bot.clickWindow(fromSlot, 0, 0);
-            await sleep(2);
-            bot.clickWindow(toSlot, 0, 0);
-            await sleep(2);
-          }
-        }
-        log(`📦 تم نقل ${itemsToMove} غرض إلى قائمة البيع`);
-      }
-
-      // 4. تحديث البيانات بعد النقل
-      tradeCount = countTradeItems(window);
-      inventoryCount = countInventoryItems(window);
-
-      // 5. إذا كانت قائمة البيع ممتلئة → بيع
-      if (isTradeFull(window)) {
-        log(`🛒 قائمة البيع ممتلئة! (${tradeCount} غرض) بيع...`);
+      // ===== الحالة 1: قائمة البيع ممتلئة → ابيع فوراً =====
+      if (state.canSell) {
+        log(`🛒 قائمة البيع ممتلئة! (${state.tradeCount} غرض) بيع...`);
         bot.clickWindow(53, 0, 0);
         await sleep(20);
         log(`✅ تم البيع!`);
-        isProcessing = false;
         
-        // نكرر العملية فوراً (بدون وقت)
-        if (isActive && currentWindow) {
-          executeSell(currentWindow);
+        // سجل كمية البيع
+        lastSaleCount = state.tradeCount;
+        consecutiveEmptySales = 0;
+        
+        isProcessing = false;
+        // البوت يقول: "خلصت، شوف شو في جديد"
+        if (currentWindow) {
+          setTimeout(() => executeSell(currentWindow), 50);
         }
         return;
       }
 
-      // 6. إذا كان في أغراض بالمخزون وأماكن فارغة بقائمة البيع
-      if (inventoryCount > 0 && tradeCount < 45) {
-        // نكرر فوراً دون انتظار
-        isProcessing = false;
-        executeSell(window);
-        return;
+      // ===== الحالة 2: في أغراض بالمخزون → انقلها =====
+      if (state.hasItems) {
+        const items = getInventoryItems(window);
+        const emptySlots = getEmptyTradeSlots(window);
+        const itemsToMove = Math.min(items.length, emptySlots.length);
+        
+        if (itemsToMove > 0) {
+          log(`📦 في ${itemsToMove} غرض بالمخزون، بنقلهم...`);
+          for (let i = 0; i < itemsToMove; i++) {
+            const fromSlot = items[i].slot;
+            const toSlot = emptySlots[i];
+            
+            if (window.slots[fromSlot]) {
+              bot.clickWindow(fromSlot, 0, 0);
+              await sleep(2);
+              bot.clickWindow(toSlot, 0, 0);
+              await sleep(2);
+            }
+          }
+          log(`✅ تم نقل ${itemsToMove} غرض`);
+          
+          // البوت يسأل: "خلصت؟ نشوف التاني"
+          isProcessing = false;
+          if (currentWindow) {
+            setTimeout(() => executeSell(currentWindow), 10);
+          }
+          return;
+        }
       }
 
-      // 7. إذا كانت قائمة البيع غير ممتلئة والمخزون فارغ
-      if (inventoryCount === 0 && tradeCount < 45) {
-        log(`⏳ انتظار أغراض جديدة من الأرض (قائمة البيع: ${tradeCount}/45)`);
-        // ننتظر حتى تصل أغراض جديدة (لا وقت محدد)
+      // ===== الحالة 3: المخزون فاضي وقائمة البيع مش متعبة → انتظر أغراض من الأرض =====
+      if (!state.hasItems && !state.canSell) {
+        log(`⏳ المخزون فاضي، قائمة البيع ${state.tradeCount}/45. بستنى أغراض من الأرض...`);
+        
+        // البوت ينتظر حتى تصل أغراض جديدة (بس بدون وقت محدد)
         let waitCycles = 0;
-        while (inventoryCount === 0 && tradeCount < 45) {
+        let foundItems = false;
+        
+        while (!foundItems && !state.canSell) {
           await sleep(200);
-          inventoryCount = countInventoryItems(window);
-          tradeCount = countTradeItems(window);
-          waitCycles++;
+          const newState = analyzeState(window);
           
-          // لو وصلت أغراض جديدة، نكسر الحلقة
-          if (inventoryCount > 0) {
-            log(`📦 وصلت أغراض جديدة! (${inventoryCount} غرض)`);
+          // لو وصلت أغراض جديدة
+          if (newState.hasItems) {
+            log(`📦 وصلت أغراض جديدة! (${newState.inventoryCount} غرض)`);
+            foundItems = true;
             break;
           }
           
-          // لو امتلأت قائمة البيع من تلقاء نفسها (نادراً)
-          if (tradeCount === 45) {
+          // لو امتلأت قائمة البيع (نادر)
+          if (newState.canSell) {
+            log(`📦 قائمة البيع امتلأت!`);
+            foundItems = true;
             break;
+          }
+          
+          waitCycles++;
+          // كل 5 ثواني أذكر إنه لسا مستني
+          if (waitCycles % 25 === 0) {
+            log(`⏳ لسا مستني أغراض... (${waitCycles * 0.2} ثانية)`);
           }
         }
         
         // نكرر العملية
         isProcessing = false;
-        if (isActive && currentWindow) {
-          executeSell(currentWindow);
+        if (currentWindow) {
+          setTimeout(() => executeSell(currentWindow), 50);
         }
         return;
       }
 
-      // 8. حالة أمان: إذا كانت قائمة البيع ممتلئة ولكن لم نكتشفها
-      if (isTradeFull(window)) {
-        log(`🛒 قائمة البيع ممتلئة! (حالة أمان) بيع...`);
-        bot.clickWindow(53, 0, 0);
-        await sleep(20);
-        log(`✅ تم البيع!`);
-        isProcessing = false;
-        if (isActive && currentWindow) {
-          executeSell(currentWindow);
-        }
-        return;
-      }
-
-      // 9. أي حالة أخرى → نكرر
+      // ===== الحالة 4: أي حالة تانية → نكرر =====
       isProcessing = false;
-      if (isActive && currentWindow) {
-        executeSell(currentWindow);
+      if (currentWindow) {
+        setTimeout(() => executeSell(currentWindow), 50);
       }
 
     } catch (err) {
       log(`⚠️ خطأ: ${err.message}`);
       isProcessing = false;
-      // نعيد المحاولة فوراً في حالة الخطأ
-      if (isActive && currentWindow) {
+      if (currentWindow) {
         setTimeout(() => executeSell(currentWindow), 100);
       }
     }
@@ -494,39 +500,34 @@ if (config.botType === 'seller') {
 
   // كتابة الأمر /sell بعد 1.5 ثانية فقط لأول مرة
   setTimeout(() => {
-    if (isActive) {
-      log(`💬 كتابة الأمر ${sellCmd}`);
-      bot.chat(sellCmd);
-    }
+    log(`💬 كتابة الأمر ${sellCmd}`);
+    bot.chat(sellCmd);
   }, 1500);
 
   // عند فتح النافذة
   bot.on('windowOpen', (window) => {
     currentWindow = window;
-    log(`📦 تم فتح نافذة البيع (قائمة البيع: 0-44)`);
-    // نبدأ العملية فوراً
+    log(`📦 تم فتح نافذة البيع`);
+    // البوت يبدأ فوراً
     setTimeout(() => {
-      if (isActive) executeSell(window);
+      executeSell(window);
     }, 100);
   });
 
   // عند إغلاق النافذة
   bot.on('windowClose', (window) => {
     if (window === currentWindow) {
-      log(`🚪 النافذة أغلقت! إعادة فتح...`);
+      log(`🚪 النافذة أغلقت! رح أفتحها تاني...`);
       currentWindow = null;
       isProcessing = false;
-      // نعيد فتح النافذة فوراً
-      if (isActive) {
-        setTimeout(() => {
-          bot.chat(sellCmd);
-        }, 500);
-      }
+      setTimeout(() => {
+        bot.chat(sellCmd);
+      }, 300);
     }
   });
 
-  log(`🛒 ===== تم إعداد نظام البيع الذكي بالكامل بنجاح ====`);
-}   
+  log(`🛒 ===== تم إعداد البوت الذكي بنجاح =====`);
+}  
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
