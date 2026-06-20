@@ -166,7 +166,7 @@ async function startViewer() {
     viewerStarted = true;
     log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
 
-    // ✅ LocalTunnel – مجاني وبدون رمز
+    // LocalTunnel - مجاني وبدون رمز
     const tunnel = await localtunnel({ port: viewerPort });
     log(`🌍 كاميرا عامة عبر LocalTunnel: ${tunnel.url}`);
 
@@ -221,6 +221,11 @@ function cleanup() {
   if (huntInterval) clearInterval(huntInterval);
   combatInterval = huntInterval = null;
   currentTarget = null;
+}
+
+// دالة مساعدة للتأخير (للبيع التلقائي)
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function createBot() {
@@ -300,70 +305,104 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-    // ========== وضع البياع (SELLER MODE) ==========
+    // ========== وضع البياع (SELLER MODE) - النسخة المتطورة ==========
     if (config.botType === 'seller') {
       const sellCmd = process.env.SELL_COMMAND || '/sell';
-      log(`🛒 ===== بدء وضع البياع ====`);
+      let isSelling = false;
+
+      log(`🛒 ===== بدء وضع البياع (الإصدار المتطور) ====`);
       log(`🛒 نوع البوت: ${config.botType}`);
       log(`🛒 الأمر المستخدم: ${sellCmd}`);
       log(`🛒 سيتم كتابة الأمر بعد 3 ثوانٍ`);
-      
+
+      // دالة لبيع الأغراض بشكل تلقائي
+      async function autoSell(window) {
+        if (isSelling) return;
+        isSelling = true;
+        
+        try {
+          log(`🔄 بدء عملية البيع التلقائي...`);
+
+          // 1. نقل الأغراض من المخزون (54-89) إلى قائمة البيع (1-52)
+          let itemsMoved = 0;
+          const inventorySlots = [];
+          const tradeSlots = [];
+
+          // تحديد السلوتات الفارغة في قائمة البيع
+          for (let i = 1; i <= 52; i++) {
+            if (!window.slots[i]) {
+              tradeSlots.push(i);
+            }
+          }
+
+          // جمع الأغراض من المخزون
+          for (let i = 54; i <= 89; i++) {
+            if (window.slots[i]) {
+              inventorySlots.push(i);
+            }
+          }
+
+          log(`📦 عدد الأغراض في المخزون: ${inventorySlots.length}`);
+          log(`📦 عدد الأماكن الفارغة في قائمة البيع: ${tradeSlots.length}`);
+
+          // نقل الأغراض
+          for (let i = 0; i < Math.min(inventorySlots.length, tradeSlots.length); i++) {
+            const fromSlot = inventorySlots[i];
+            const toSlot = tradeSlots[i];
+            
+            bot.clickWindow(fromSlot, 0, 0);
+            await sleep(200);
+            bot.clickWindow(toSlot, 0, 0);
+            await sleep(200);
+            
+            itemsMoved++;
+            log(`📤 نقل غرض من سلوت ${fromSlot} إلى سلوت ${toSlot}`);
+          }
+
+          if (itemsMoved === 0) {
+            log(`⚠️ لا توجد أغراض لنقلها.`);
+            isSelling = false;
+            return;
+          }
+
+          log(`✅ تم نقل ${itemsMoved} غرض/أغراض إلى قائمة البيع.`);
+
+          // 2. الضغط على زر البيع (سلوت 53)
+          await sleep(500);
+          log(`🛒 الضغط على زر البيع (سلوت 53)...`);
+          bot.clickWindow(53, 0, 0);
+          await sleep(500);
+
+          log(`✅ تم الضغط على زر البيع بنجاح!`);
+
+          // 3. تكرار العملية (الاستمرار في البيع)
+          isSelling = false;
+          log(`🔄 جاهز لتكرار العملية...`);
+
+        } catch (err) {
+          log(`⚠️ خطأ أثناء البيع: ${err.message}`);
+          isSelling = false;
+        }
+      }
+
+      // كتابة الأمر /sell
       setTimeout(() => {
         log(`💬 كتابة الأمر ${sellCmd} إلى السيرفر`);
         bot.chat(sellCmd);
         log(`✅ تم إرسال الأمر ${sellCmd}`);
       }, 3000);
 
+      // الاستماع لفتح النافذة
       bot.on('windowOpen', (window) => {
         log(`📦 ===== تم فتح نافذة ====`);
         log(`📦 عنوان النافذة: ${window.title}`);
         log(`📦 عدد السلوتات: ${window.slots.length}`);
-        
-        const items = [];
-        for (let i = 0; i < window.slots.length; i++) {
-          const slot = window.slots[i];
-          if (slot) {
-            items.push({
-              name: slot.name,
-              count: slot.count,
-              slot: i
-            });
-            log(`📦 سلوت ${i}: ${slot.name} × ${slot.count}`);
-          }
-        }
 
-        if (items.length === 0) {
-          log(`⚠️ لا توجد أغراض في النافذة.`);
-        } else {
-          log(`📋 ===== تم العثور على ${items.length} غرض/أغراض =====`);
-          items.forEach((item, index) => {
-            log(`   ${index+1}. ${item.name} × ${item.count} (سلوت ${item.slot})`);
-          });
-
-          const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
-          axios.post(`${apiUrl}/api/seller-items`, {
-            botId: config.botId,
-            items: items
-          }).then(() => {
-            log(`✅ تم إرسال القائمة إلى الخادم الرئيسي بنجاح`);
-          }).catch(err => {
-            log(`⚠️ فشل إرسال القائمة: ${err.message}`);
-          });
-        }
-
-        setTimeout(() => {
-          log(`🚪 إغلاق النافذة (محاكاة ESC)`);
-          bot.closeWindow(window);
-          log(`✅ تم إغلاق النافذة`);
-        }, 2000);
+        // بدء عملية البيع التلقائي
+        autoSell(window);
       });
-      
-      bot.on('message', (message) => {
-        const msg = message.toString().trim();
-        log(`💬 رسالة من السيرفر: ${msg}`);
-      });
-      
-      log(`🛒 ===== تم إعداد وضع البياع بنجاح ====`);
+
+      log(`🛒 ===== تم إعداد وضع البياع المتطور بنجاح ====`);
     }
     
     // ========== الأنواع الأخرى ==========
