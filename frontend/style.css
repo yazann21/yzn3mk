@@ -1004,3 +1004,13 @@ input:checked + .toggle-slider:before { transform: translateX(26px); }
     .bot-card { padding: 15px; }
     .inventory-grid { grid-template-columns: repeat(4, 1fr); }
 }
+/* إلغاء تأثيرات form-row و input-group على خيارات الحسابات */
+.form-row:has(.auth-options-vertical) {
+    display: block !important;
+}
+.form-row:has(.auth-options-vertical) .input-group.floating {
+    margin-bottom: 0 !important;
+}
+.form-row:has(.auth-options-vertical) .input-group.floating label {
+    display: none !important;
+}

@@ -120,20 +120,17 @@
                                     <span class="input-border"></span>
                                 </div>
                             </div>
-                           <!-- خيارات الحسابات (عمودية) -->
-<div class="form-row">
-    <div class="input-group floating" style="grid-column: span 2;">
-        <div style="display: flex; flex-direction: column; gap: 12px; padding: 10px 0; width: 100%;">
-            <label style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.04); padding: 12px 16px; border-radius: 10px; cursor: pointer; width: 100%;">
-                <input type="radio" name="authType" value="offline" checked style="width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: #7c3aed; flex-shrink: 0;">
-                <span style="font-size: 15px; font-weight: 500; color: #ffffff;">🎭 وضع غير مسجل (دخول بالاسم فقط)</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.04); padding: 12px 16px; border-radius: 10px; cursor: pointer; width: 100%;">
-                <input type="radio" name="authType" value="microsoft" style="width: 18px; height: 18px; margin: 0; cursor: pointer; accent-color: #7c3aed; flex-shrink: 0;">
-                <span style="font-size: 15px; font-weight: 500; color: #ffffff;">🔐 حساب مايكروسوفت حقيقي (يتطلب مصادقة)</span>
-            </label>
-        </div>
-        <span class="input-border"></span>
+                         <!-- خيارات الحسابات -->
+<div class="form-row" style="margin-bottom: 10px; display: block;">
+    <div style="display: flex; flex-direction: column; gap: 10px; padding: 5px 0; width: 100%;">
+        <label style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; cursor: pointer; width: 100%;">
+            <input type="radio" name="authType" value="offline" checked style="width: 18px; height: 18px; accent-color: #7c3aed; flex-shrink: 0;">
+            <span style="font-size: 14px; font-weight: 500; color: #fff;">🎭 وضع غير مسجل (دخول بالاسم فقط)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 8px; cursor: pointer; width: 100%;">
+            <input type="radio" name="authType" value="microsoft" style="width: 18px; height: 18px; accent-color: #7c3aed; flex-shrink: 0;">
+            <span style="font-size: 14px; font-weight: 500; color: #fff;">🔐 حساب مايكروسوفت حقيقي (يتطلب مصادقة)</span>
+        </label>
     </div>
 </div>
                             <!-- حقل أمر البيع (مخفي افتراضياً) -->
