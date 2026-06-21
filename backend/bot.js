@@ -226,6 +226,117 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ===== وظائف البيع السريع =====
+function getInventorySlots(window) {
+  const slots = [];
+  for (let i = 54; i <= 89; i++) {
+    if (window.slots[i]) {
+      slots.push(i);
+    }
+  }
+  return slots;
+}
+
+function countTradeItems(window) {
+  let count = 0;
+  for (let i = 0; i <= 44; i++) {
+    if (window.slots[i]) count++;
+  }
+  return count;
+}
+
+async function quickSell(window) {
+  if (isProcessing) return;
+  isProcessing = true;
+  
+  try {
+    // 1. جلب كل السلوتات في المخزون (54-89)
+    const inventorySlots = getInventorySlots(window);
+    
+    if (inventorySlots.length === 0) {
+      isProcessing = false;
+      return;
+    }
+    
+    log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
+    
+    // 2. Shift + Click على كل غرض في المخزون
+    for (const slot of inventorySlots) {
+      if (window.slots[slot]) {
+        bot.clickWindow(slot, 0, 1); // Shift + Click
+        await sleep(3);
+      }
+    }
+    
+    // 3. التحقق المستمر: هل امتلأت القائمة؟
+    let checkCount = 0;
+    const maxChecks = 200;
+    
+    while (checkCount < maxChecks) {
+      const tradeCount = countTradeItems(window);
+      
+      if (tradeCount >= 45) {
+        log(`🎯 القائمة ممتلئة! (${tradeCount}/45)`);
+        break;
+      }
+      
+      // إذا كان في أغراض متبقية في المخزون → انقلها
+      const remaining = getInventorySlots(window);
+      if (remaining.length > 0) {
+        for (const slot of remaining) {
+          if (window.slots[slot]) {
+            bot.clickWindow(slot, 0, 1);
+            await sleep(3);
+          }
+        }
+      }
+      
+      await sleep(50);
+      checkCount++;
+    }
+    
+    // 4. إغلاق النافذة (بيع تلقائي)
+    const finalCount = countTradeItems(window);
+    if (finalCount > 0) {
+      await sleep(50);
+      log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
+      bot.closeWindow(window);
+      
+      // كتابة /sell مرة ثانية
+      sellCommandSent = false;
+      setTimeout(() => {
+        if (bot) {
+          bot.chat('/sell');
+          sellCommandSent = true;
+        }
+      }, 300);
+    }
+    
+  } catch (err) {
+    log(`⚠️ خطأ في البيع: ${err.message}`);
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ===== وضع البياع الجديد =====
+let isProcessing = false;
+let sellCommandSent = false;
+
+if (config.botType === 'seller') {
+  // ===== ربط الأحداث =====
+  bot.on('windowOpen', async (window) => {
+    log(`📦 نافذة مفتوحة`);
+    isProcessing = false;
+    await sleep(50);
+    quickSell(window);
+  });
+
+  bot.on('windowClose', () => {
+    log(`📦 نافذة مقفلة`);
+  });
+}
+
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
   
@@ -303,139 +414,46 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نظام لحظي بالكامل ==========
-if (config.botType === 'seller') {
-  const sellCmd = process.env.SELL_COMMAND || '/sell';
-  let isProcessing = false;
-  let currentWindow = null;
-  let sellCommandSent = false;
-
-  log(`🛒 تشغيل بوت البياع (نظام لحظي)`);
-
-  // دالة لجلب الأماكن الفارغة في قائمة البيع (0-44)
-  function getEmptySlots(window) {
-    const slots = [];
-    for (let i = 0; i <= 44; i++) {
-      if (!window.slots[i]) {
-        slots.push(i);
-      }
-    }
-    return slots;
-  }
-
-  // دالة لجلب الأغراض من المخزون (54-89)
-  function getInventoryItems(window) {
-    const items = [];
-    for (let i = 54; i <= 89; i++) {
-      if (window.slots[i]) {
-        items.push({ slot: i, name: window.slots[i].name, count: window.slots[i].count });
-      }
-    }
-    return items;
-  }
-
-  // دالة للتحقق من امتلاء قائمة البيع (0-44)
-  function isTradeFull(window) {
-    for (let i = 0; i <= 44; i++) {
-      if (!window.slots[i]) return false;
-    }
-    return true;
-  }
-
-  // دالة لحساب عدد الأغراض في قائمة البيع
-  function countTradeItems(window) {
-    let count = 0;
-    for (let i = 0; i <= 44; i++) {
-      if (window.slots[i]) count++;
-    }
-    return count;
-  }
-
-  // ===== اللحظة الذهبية: تحليل النافذة واتخاذ القرار الفوري =====
-  function analyzeAndAct(window) {
-    if (isProcessing || !window) return;
-    isProcessing = true;
-    
-    try {
-      const items = getInventoryItems(window);
-      const emptySlots = getEmptySlots(window);
-      const tradeCount = countTradeItems(window);
+    // ========== وضع البياع (SELLER MODE) ==========
+    if (config.botType === 'seller') {
+      const sellCmd = process.env.SELL_COMMAND || '/sell';
       
-      // الحالة 1: قائمة البيع ممتلئة → بيع فوراً
-      if (isTradeFull(window)) {
-        bot.clickWindow(53, 0, 0);
-        isProcessing = false;
-        return;
-      }
+      log(`🛒 تشغيل بوت البياع (بيع سريع بـ Shift+Click)`);
       
-      // الحالة 2: في أغراض بالمخزون وأماكن فارغة → انقل فوراً
-      if (items.length > 0 && emptySlots.length > 0) {
-        const fromSlot = items[0].slot;
-        const toSlot = emptySlots[0];
-        
-        if (window.slots[fromSlot]) {
-          bot.clickWindow(fromSlot, 0, 0);
-          bot.clickWindow(toSlot, 0, 0);
+      // كتابة الأمر /sell (مرة واحدة)
+      const sendSellCommand = () => {
+        if (!sellCommandSent) {
+          sellCommandSent = true;
+          bot.chat(sellCmd);
         }
+      };
+      
+      // أول مرة بعد 1.5 ثانية
+      setTimeout(sendSellCommand, 1500);
+      
+      // ===== ربط الأحداث =====
+      bot.on('windowOpen', async (window) => {
+        log(`📦 نافذة مفتوحة`);
         isProcessing = false;
-        return;
-      }
+        await sleep(50);
+        quickSell(window);
+      });
+
+      bot.on('windowClose', () => {
+        log(`📦 نافذة مقفلة`);
+        sellCommandSent = false;
+        // نعيد فتحها بعد 300ms
+        setTimeout(() => {
+          if (bot) {
+            bot.chat(sellCmd);
+            sellCommandSent = true;
+          }
+        }, 300);
+      });
       
-      // الحالة 3: ما في أغراض بالمخزون وما في أماكن فارغة
-      isProcessing = false;
-      
-    } catch (err) {
-      isProcessing = false;
+      log(`🛒 تم إعداد البوت البياع (بيع سريع)`);
     }
-  }
-
-  // ===== ربط الأحداث اللحظية =====
-  
-  // عند فتح النافذة
-  bot.on('windowOpen', (window) => {
-    currentWindow = window;
-    log(`📦 نافذة البيع مفتوحة`);
-    // نبدأ التحليل الفوري
-    analyzeAndAct(window);
-  });
-
-  // عند تحديث النافذة (كل تغيير في السلوتات)
-  bot.on('windowUpdate', (window) => {
-    if (window === currentWindow) {
-      analyzeAndAct(window);
-    }
-  });
-
-  // عند إغلاق النافذة
-  bot.on('windowClose', (window) => {
-    if (window === currentWindow) {
-      log(`🚪 النافذة أغلقت`);
-      currentWindow = null;
-      sellCommandSent = false;
-      // نعيد فتحها فوراً
-      bot.chat(sellCmd);
-    }
-  });
-
-  // كتابة الأمر /sell (مرة واحدة فقط)
-  const sendSellCommand = () => {
-    if (!sellCommandSent) {
-      sellCommandSent = true;
-      bot.chat(sellCmd);
-    }
-  };
-
-  // أول مرة بعد 1.5 ثانية
-  setTimeout(sendSellCommand, 1500);
-
-  // عند دخول العالم
-  bot.once('spawn', () => {
-    // نرسل الأمر بعد 1.5 ثانية
-    setTimeout(sendSellCommand, 1500);
-  });
-
-  log(`🛒 تم إعداد البوت البياع (لحظي بالكامل)`);
-}
+    
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
