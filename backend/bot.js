@@ -303,13 +303,13 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نسخة تنتظر حتى الامتلاء الكامل ==========
+// ========== وضع البياع (SELLER MODE) - يجمع حتى يصير ستاك ثم يبيع ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
 
-  log(`🛒 تشغيل بوت البياع (ينتظر حتى تمتلئ الخانات)`);
+  log(`🛒 تشغيل بوت البياع (يجمع حتى يصير ستاك)`);
 
   // دالة لجلب الأماكن الفارغة في قائمة البيع (0-44)
   function getEmptySlots(window) {
@@ -322,11 +322,22 @@ if (config.botType === 'seller') {
     return slots;
   }
 
-  // دالة لجلب الأغراض من المخزون (54-89)
-  function getInventoryItems(window) {
+  // دالة لجلب الستاكات فقط من المخزون (54-89)
+  function getFullStacks(window) {
     const items = [];
     for (let i = 54; i <= 89; i++) {
-      if (window.slots[i]) {
+      if (window.slots[i] && window.slots[i].count === 64) {
+        items.push({ slot: i, name: window.slots[i].name });
+      }
+    }
+    return items;
+  }
+
+  // دالة لجلب الأغراض الفردية من المخزون (أقل من 64)
+  function getPartialItems(window) {
+    const items = [];
+    for (let i = 54; i <= 89; i++) {
+      if (window.slots[i] && window.slots[i].count < 64 && window.slots[i].count > 0) {
         items.push({ slot: i, name: window.slots[i].name, count: window.slots[i].count });
       }
     }
@@ -355,16 +366,16 @@ if (config.botType === 'seller') {
     isProcessing = true;
     
     try {
-      // 1. جلب الأغراض من المخزون
-      let items = getInventoryItems(window);
+      // 1. جلب الستاكات من المخزون
+      let fullStacks = getFullStacks(window);
       let emptySlots = getEmptySlots(window);
       
-      // 2. نقل الأغراض إلى الأماكن الفارغة
-      if (items.length > 0 && emptySlots.length > 0) {
-        const itemsToMove = Math.min(items.length, emptySlots.length);
+      // 2. إذا كان في ستاكات وأماكن فارغة → انقل الستاكات
+      if (fullStacks.length > 0 && emptySlots.length > 0) {
+        const itemsToMove = Math.min(fullStacks.length, emptySlots.length);
         
         for (let i = 0; i < itemsToMove; i++) {
-          const fromSlot = items[i].slot;
+          const fromSlot = fullStacks[i].slot;
           const toSlot = emptySlots[i];
           
           if (window.slots[fromSlot]) {
@@ -376,44 +387,49 @@ if (config.botType === 'seller') {
         }
       }
 
-      // 3. التحقق من امتلاء قائمة البيع
-      const tradeCount = countTradeItems(window);
-      
+      // 3. إذا امتلأت قائمة البيع → بيع
       if (isTradeFull(window)) {
-        // ✅ القائمة ممتلئة بالكامل → بيع
-        log(`🛒 بيع ${tradeCount} غرض`);
         bot.clickWindow(53, 0, 0);
         await sleep(50);
-        
         isProcessing = false;
-        // نكرر فوراً
         if (currentWindow) executeSell(currentWindow);
         return;
       }
 
-      // 4. إذا لم تمتلئ القائمة، ننتظر حتى تمتلئ (بدون بيع)
-      // نتحقق من وجود أغراض في المخزون
-      items = getInventoryItems(window);
+      // 4. إذا في ستاكات متبقية وأماكن فارغة → نكرر
+      fullStacks = getFullStacks(window);
+      emptySlots = getEmptySlots(window);
       
-      if (items.length > 0) {
-        // في أغراض بالمخزون → ننقلها
+      if (fullStacks.length > 0 && emptySlots.length > 0) {
         isProcessing = false;
         executeSell(window);
         return;
       }
 
-      // 5. ما في أغراض بالمخزون والقائمة مش متعبة → ننتظر
+      // 5. إذا ما في ستاكات، نتحقق من الأغراض الفردية
+      const partialItems = getPartialItems(window);
+      
+      if (partialItems.length > 0) {
+        // في أغراض فردية (أقل من 64) → ننتظر حتى تصير ستاك
+        // البوت يلتقط من الأرض تلقائياً، فقط ننتظر
+        isProcessing = false;
+        setTimeout(() => {
+          if (currentWindow) executeSell(currentWindow);
+        }, 2000); // ننتظر 2 ثانية عشان يلتقط من الأرض
+        return;
+      }
+
+      // 6. ما في أغراض نهائياً → ننتظر
       isProcessing = false;
-      // نتحقق كل 500ms بدون إشعارات
       setTimeout(() => {
         if (currentWindow) executeSell(currentWindow);
-      }, 500);
+      }, 2000);
 
     } catch (err) {
       isProcessing = false;
       setTimeout(() => {
         if (currentWindow) executeSell(currentWindow);
-      }, 500);
+      }, 2000);
     }
   }
 
@@ -440,8 +456,8 @@ if (config.botType === 'seller') {
     }
   });
 
-  log(`🛒 تم إعداد بوت البياع (ينتظر الامتلاء الكامل)`);
-}  
+  log(`🛒 تم إعداد بوت البياع (يجمع حتى يصير ستاك)`);
+}
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
