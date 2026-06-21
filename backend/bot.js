@@ -250,7 +250,6 @@ async function quickSell(window) {
   isProcessing = true;
   
   try {
-    // 1. جلب كل السلوتات في المخزون (54-89)
     const inventorySlots = getInventorySlots(window);
     
     if (inventorySlots.length === 0) {
@@ -260,15 +259,13 @@ async function quickSell(window) {
     
     log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
     
-    // 2. Shift + Click على كل غرض في المخزون
     for (const slot of inventorySlots) {
       if (window.slots[slot]) {
-        bot.clickWindow(slot, 0, 1); // Shift + Click
+        bot.clickWindow(slot, 0, 1);
         await sleep(3);
       }
     }
     
-    // 3. التحقق المستمر: هل امتلأت القائمة؟
     let checkCount = 0;
     const maxChecks = 200;
     
@@ -280,7 +277,6 @@ async function quickSell(window) {
         break;
       }
       
-      // إذا كان في أغراض متبقية في المخزون → انقلها
       const remaining = getInventorySlots(window);
       if (remaining.length > 0) {
         for (const slot of remaining) {
@@ -295,14 +291,12 @@ async function quickSell(window) {
       checkCount++;
     }
     
-    // 4. إغلاق النافذة (بيع تلقائي)
     const finalCount = countTradeItems(window);
     if (finalCount > 0) {
       await sleep(50);
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
       bot.closeWindow(window);
       
-      // كتابة /sell مرة ثانية
       sellCommandSent = false;
       setTimeout(() => {
         if (bot) {
@@ -319,23 +313,8 @@ async function quickSell(window) {
   }
 }
 
-// ===== وضع البياع الجديد =====
 let isProcessing = false;
 let sellCommandSent = false;
-
-if (config.botType === 'seller') {
-  // ===== ربط الأحداث =====
-  bot.on('windowOpen', async (window) => {
-    log(`📦 نافذة مفتوحة`);
-    isProcessing = false;
-    await sleep(50);
-    quickSell(window);
-  });
-
-  bot.on('windowClose', () => {
-    log(`📦 نافذة مقفلة`);
-  });
-}
 
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
@@ -389,7 +368,6 @@ async function createBot() {
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
     
-    // الأكل التلقائي
     setInterval(() => {
       if (!bot || !bot.entity || bot.health <= 0) return;
       if (isEating) return;
@@ -420,7 +398,6 @@ async function createBot() {
       
       log(`🛒 تشغيل بوت البياع (بيع سريع بـ Shift+Click)`);
       
-      // كتابة الأمر /sell (مرة واحدة)
       const sendSellCommand = () => {
         if (!sellCommandSent) {
           sellCommandSent = true;
@@ -428,10 +405,9 @@ async function createBot() {
         }
       };
       
-      // أول مرة بعد 1.5 ثانية
       setTimeout(sendSellCommand, 1500);
       
-      // ===== ربط الأحداث =====
+      // ===== أحداث البوت هنا (داخل createBot بعد إنشاء البوت) =====
       bot.on('windowOpen', async (window) => {
         log(`📦 نافذة مفتوحة`);
         isProcessing = false;
@@ -442,7 +418,6 @@ async function createBot() {
       bot.on('windowClose', () => {
         log(`📦 نافذة مقفلة`);
         sellCommandSent = false;
-        // نعيد فتحها بعد 300ms
         setTimeout(() => {
           if (bot) {
             bot.chat(sellCmd);
