@@ -303,13 +303,13 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-// ========== وضع البياع (SELLER MODE) - نسخة ذكية (ستاكات فقط، بدون إشعارات) ==========
+// ========== وضع البياع (SELLER MODE) - نسخة تنتظر حتى الامتلاء الكامل ==========
 if (config.botType === 'seller') {
   const sellCmd = process.env.SELL_COMMAND || '/sell';
   let isProcessing = false;
   let currentWindow = null;
 
-  log(`🛒 تشغيل بوت البياع`);
+  log(`🛒 تشغيل بوت البياع (ينتظر حتى تمتلئ الخانات)`);
 
   // دالة لجلب الأماكن الفارغة في قائمة البيع (0-44)
   function getEmptySlots(window) {
@@ -322,12 +322,12 @@ if (config.botType === 'seller') {
     return slots;
   }
 
-  // دالة لجلب الستاكات فقط من المخزون (54-89)
-  function getFullStacks(window) {
+  // دالة لجلب الأغراض من المخزون (54-89)
+  function getInventoryItems(window) {
     const items = [];
     for (let i = 54; i <= 89; i++) {
-      if (window.slots[i] && window.slots[i].count === 64) {
-        items.push({ slot: i, name: window.slots[i].name });
+      if (window.slots[i]) {
+        items.push({ slot: i, name: window.slots[i].name, count: window.slots[i].count });
       }
     }
     return items;
@@ -355,16 +355,16 @@ if (config.botType === 'seller') {
     isProcessing = true;
     
     try {
-      // 1. جلب الستاكات من المخزون
-      let fullStacks = getFullStacks(window);
+      // 1. جلب الأغراض من المخزون
+      let items = getInventoryItems(window);
       let emptySlots = getEmptySlots(window);
       
-      // 2. إذا كان في ستاكات وأماكن فارغة → انقل
-      if (fullStacks.length > 0 && emptySlots.length > 0) {
-        const itemsToMove = Math.min(fullStacks.length, emptySlots.length);
+      // 2. نقل الأغراض إلى الأماكن الفارغة
+      if (items.length > 0 && emptySlots.length > 0) {
+        const itemsToMove = Math.min(items.length, emptySlots.length);
         
         for (let i = 0; i < itemsToMove; i++) {
-          const fromSlot = fullStacks[i].slot;
+          const fromSlot = items[i].slot;
           const toSlot = emptySlots[i];
           
           if (window.slots[fromSlot]) {
@@ -376,38 +376,44 @@ if (config.botType === 'seller') {
         }
       }
 
-      // 3. إذا امتلأت قائمة البيع → بيع
+      // 3. التحقق من امتلاء قائمة البيع
+      const tradeCount = countTradeItems(window);
+      
       if (isTradeFull(window)) {
+        // ✅ القائمة ممتلئة بالكامل → بيع
+        log(`🛒 بيع ${tradeCount} غرض`);
         bot.clickWindow(53, 0, 0);
         await sleep(50);
+        
         isProcessing = false;
-        // نكرر فوراً (بدون وقت)
+        // نكرر فوراً
         if (currentWindow) executeSell(currentWindow);
         return;
       }
 
-      // 4. إذا في ستاكات متبقية وأماكن فارغة → نكرر
-      fullStacks = getFullStacks(window);
-      emptySlots = getEmptySlots(window);
+      // 4. إذا لم تمتلئ القائمة، ننتظر حتى تمتلئ (بدون بيع)
+      // نتحقق من وجود أغراض في المخزون
+      items = getInventoryItems(window);
       
-      if (fullStacks.length > 0 && emptySlots.length > 0) {
+      if (items.length > 0) {
+        // في أغراض بالمخزون → ننقلها
         isProcessing = false;
         executeSell(window);
         return;
       }
 
-      // 5. إذا ما في ستاكات → ننتظر (على الحالة، مش وقت)
+      // 5. ما في أغراض بالمخزون والقائمة مش متعبة → ننتظر
       isProcessing = false;
-      // نتحقق كل 2 ثانية بدون إشعارات
+      // نتحقق كل 500ms بدون إشعارات
       setTimeout(() => {
         if (currentWindow) executeSell(currentWindow);
-      }, 2000);
+      }, 500);
 
     } catch (err) {
       isProcessing = false;
       setTimeout(() => {
         if (currentWindow) executeSell(currentWindow);
-      }, 2000);
+      }, 500);
     }
   }
 
@@ -419,6 +425,7 @@ if (config.botType === 'seller') {
   // عند فتح النافذة
   bot.on('windowOpen', (window) => {
     currentWindow = window;
+    log(`📦 تم فتح نافذة البيع`);
     setTimeout(() => {
       executeSell(window);
     }, 200);
@@ -433,7 +440,7 @@ if (config.botType === 'seller') {
     }
   });
 
-  log(`🛒 تم إعداد البوت البياع`);
+  log(`🛒 تم إعداد بوت البياع (ينتظر الامتلاء الكامل)`);
 }  
     // ========== الأنواع الأخرى ==========
     if (config.botType === 'afk') {
