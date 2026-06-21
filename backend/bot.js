@@ -17,6 +17,10 @@ let killCount = 0;
 let deathCount = 0;
 let isDisconnecting = false;
 let isEating = false;
+let isProcessing = false;
+let sellCommandSent = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 999;
 
 const args = process.argv.slice(2);
 const config = {
@@ -252,8 +256,17 @@ async function quickSell(window) {
   try {
     const inventorySlots = getInventorySlots(window);
     
+    // إذا المخزون فاضي → ننتظر 5 ثواني ثم نعيد المحاولة
     if (inventorySlots.length === 0) {
+      log(`⏳ المخزون فاضي، انتظار 5 ثواني ثم إعادة المحاولة...`);
       isProcessing = false;
+      setTimeout(() => {
+        if (bot) {
+          log(`🔄 إعادة محاولة البيع...`);
+          sellCommandSent = false;
+          bot.chat('/sell');
+        }
+      }, 5000);
       return;
     }
     
@@ -304,6 +317,15 @@ async function quickSell(window) {
           sellCommandSent = true;
         }
       }, 300);
+    } else {
+      log(`⚠️ لا توجد أغراض للبيع، إعادة المحاولة...`);
+      isProcessing = false;
+      setTimeout(() => {
+        if (bot) {
+          sellCommandSent = false;
+          bot.chat('/sell');
+        }
+      }, 3000);
     }
     
   } catch (err) {
@@ -312,9 +334,6 @@ async function quickSell(window) {
     isProcessing = false;
   }
 }
-
-let isProcessing = false;
-let sellCommandSent = false;
 
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
@@ -358,7 +377,10 @@ async function createBot() {
   bot = mineflayer.createBot(authConfig);
   bot.loadPlugin(pathfinder);
 
-  bot.on('login', () => log(`✅ دخل البوت بنجاح باسم ${bot.username}`));
+  bot.on('login', () => {
+    log(`✅ دخل البوت بنجاح باسم ${bot.username}`);
+    reconnectAttempts = 0;
+  });
   
   bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
@@ -407,7 +429,6 @@ async function createBot() {
       
       setTimeout(sendSellCommand, 1500);
       
-      // ===== أحداث البوت هنا (داخل createBot بعد إنشاء البوت) =====
       bot.on('windowOpen', async (window) => {
         log(`📦 نافذة مفتوحة`);
         isProcessing = false;
@@ -472,8 +493,17 @@ async function createBot() {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
     viewerStarted = false;
+    sellCommandSent = false;
+    isProcessing = false;
+    
     if (isDisconnecting) {
       process.exit(0);
+    } else {
+      reconnectAttempts++;
+      log(`🔄 إعادة محاولة الاتصال (${reconnectAttempts})...`);
+      setTimeout(() => {
+        createBot();
+      }, 3000);
     }
   });
   
