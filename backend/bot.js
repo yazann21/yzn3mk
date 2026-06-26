@@ -23,7 +23,7 @@ let totalSales = 0;
 let startTime = Date.now();
 let isProcessing = false;
 let currentWindow = null;
-let retryCount = 0;
+let waitingForItems = false; // متغير لتتبع حالة الانتظار
 
 const args = process.argv.slice(2);
 const config = {
@@ -187,47 +187,70 @@ function countTradeItems(window) {
   return count;
 }
 
-// ===== نقل الأغراض بـ Shift + Click =====
+// ===== نقل الأغراض بـ Shift + Click (مع الانتظار إذا كان المخزون فارغ) =====
 async function moveAllItems(window) {
   if (isProcessing) return;
   isProcessing = true;
+  waitingForItems = false;
   
   try {
-    const inventorySlots = getInventorySlots(window);
+    // 1. جلب كل السلوتات في المخزون (54-89)
+    let inventorySlots = getInventorySlots(window);
     
+    // إذا كان المخزون فارغ، انتظر حتى تأتي أغراض
     if (inventorySlots.length === 0) {
-      log(`⚠️ المخزون فارغ (المحاولة ${retryCount + 1})`);
-      retryCount++;
+      log(`⏳ المخزون فارغ، في انتظار وصول أغراض...`);
+      waitingForItems = true;
       
-      bot.closeWindow(window);
+      // استمر في التحقق كل ثانية
+      let waitCount = 0;
+      const maxWait = 300; // 300 ثانية كحد أقصى (5 دقائق)
       
-      setTimeout(() => {
-        if (bot && !sellCommandSent) {
-          log(`🔄 محاولة إعادة كتابة /sell (المحاولة ${retryCount})`);
-          sellCommandSent = true;
-          bot.chat('/sell');
+      while (waitCount < maxWait && waitingForItems) {
+        await sleep(1000);
+        inventorySlots = getInventorySlots(window);
+        if (inventorySlots.length > 0) {
+          log(`✅ تم استلام ${inventorySlots.length} غرض/أغراض جديدة!`);
+          waitingForItems = false;
+          break;
         }
-      }, 5000);
+        waitCount++;
+        if (waitCount % 10 === 0) {
+          log(`⏳ لا زال المخزون فارغاً... (${waitCount} ثانية)`);
+        }
+      }
       
-      isProcessing = false;
-      return;
+      if (inventorySlots.length === 0) {
+        log(`⏰ انتهى وقت الانتظار، سيتم إعادة محاولة البيع لاحقاً`);
+        isProcessing = false;
+        waitingForItems = false;
+        // إعادة كتابة /sell بعد فترة
+        setTimeout(() => {
+          if (bot && !sellCommandSent) {
+            sellCommandSent = true;
+            log(`💬 إعادة كتابة /sell`);
+            bot.chat('/sell');
+          }
+        }, 5000);
+        return;
+      }
     }
-    
-    retryCount = 0;
     
     log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
     
+    // 2. Shift + Click على كل غرض في المخزون
     for (const slot of inventorySlots) {
       if (window.slots[slot]) {
-        bot.clickWindow(slot, 0, 1);
-        await sleep(3);
+        bot.clickWindow(slot, 0, 1); // Shift + Click
+        await sleep(3); // تأخير صغير جداً للحفاظ على السرعة
       }
     }
     
     log(`✅ تم نقل كل الأغراض`);
     
+    // 3. التحقق المستمر: هل امتلأت القائمة؟
     let checkCount = 0;
-    const maxChecks = 200;
+    const maxChecks = 200; // 200 × 50ms = 10 ثواني كحد أقصى
     
     while (checkCount < maxChecks) {
       const tradeCount = countTradeItems(window);
@@ -237,6 +260,7 @@ async function moveAllItems(window) {
         break;
       }
       
+      // إذا كان في أغراض متبقية في المخزون → انقلها
       const remaining = getInventorySlots(window);
       if (remaining.length > 0) {
         log(`📦 نقل ${remaining.length} غرض متبقي`);
@@ -252,28 +276,40 @@ async function moveAllItems(window) {
       checkCount++;
     }
     
+    // 4. إغلاق النافذة (بيع تلقائي)
     const finalCount = countTradeItems(window);
     if (finalCount > 0) {
       await sleep(50);
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
       bot.closeWindow(window);
       
+      // كتابة /sell مرة ثانية
       sellCommandSent = false;
       setTimeout(() => {
         if (bot) {
-          log(`💬 كتابة /sell (دورة جديدة)`);
+          log(`💬 كتابة /sell`);
           bot.chat('/sell');
           sellCommandSent = true;
         }
       }, 300);
     } else {
-      log(`⚠️ لا توجد أغراض للبيع`);
+      log(`⚠️ لا توجد أغراض للبيع، سيتم إعادة المحاولة`);
+      // إعادة كتابة /sell
+      sellCommandSent = false;
+      setTimeout(() => {
+        if (bot) {
+          log(`💬 إعادة كتابة /sell`);
+          bot.chat('/sell');
+          sellCommandSent = true;
+        }
+      }, 2000);
     }
     
   } catch (err) {
     log(`⚠️ خطأ في moveAllItems: ${err.message}`);
   } finally {
     isProcessing = false;
+    waitingForItems = false;
   }
 }
 
@@ -397,19 +433,18 @@ async function createBot() {
     }, 5000);
 
     // ============================================================
-    // ========== وضع البياع (SELLER MODE) ==========
+    // ========== وضع البياع (SELLER MODE) - نسخة البوت الثاني ==========
     // ============================================================
     if (config.botType === 'seller') {
       log(`🛒 ===== بدء وضع البياع (نسخة البوت الثاني) ====`);
       log(`🛒 نوع البوت: ${config.botType}`);
       log(`🛒 السيرفر: ${config.serverIp}`);
-      log(`🛒 🚫 تم إلغاء تفعيل القتال (AFK/Hunter/Coward) أثناء البيع`);
       
-      // كتابة /sell بعد 1.5 ثانية
+      // كتابة /sell بعد 1.5 ثانية (مثل البوت الثاني)
       setTimeout(() => {
         if (bot && !sellCommandSent) {
           sellCommandSent = true;
-          log(`💬 كتابة /sell (أول مرة)`);
+          log(`💬 كتابة /sell`);
           bot.chat('/sell');
         }
       }, 1500);
@@ -420,21 +455,24 @@ async function createBot() {
         log(`📦 نافذة مفتوحة (العنوان: ${window.title})`);
         isProcessing = false;
         await sleep(50);
-        moveAllItems(window);
+        moveAllItems(window); // تشغيل وظيفة النقل
       });
       
       // ===== حدث إغلاق النافذة =====
       bot.on('windowClose', () => {
         currentWindow = null;
+        waitingForItems = false;
         log(`📦 نافذة مقفلة`);
       });
       
       log(`🛒 ===== تم إعداد وضع البياع بنجاح ====`);
     }
     // ============================================================
-    // ========== باقي الأنواع (AFK, Hunter, Coward) ==========
+    // ========== نهاية وضع البياع ==========
     // ============================================================
-    else if (config.botType === 'afk') {
+    
+    // ========== الأنواع الأخرى ==========
+    if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
     } else if (config.botType === 'hunter') {
       huntInterval = setInterval(() => attackNearest(), 2000);
@@ -475,10 +513,11 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
+    // إعادة تعيين متغيرات البياع عند قطع الاتصال
     sellCommandSent = false;
     currentWindow = null;
     isProcessing = false;
-    retryCount = 0;
+    waitingForItems = false;
     if (isDisconnecting) {
       process.exit(0);
     }
