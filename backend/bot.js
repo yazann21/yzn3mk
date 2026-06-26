@@ -5,7 +5,15 @@ const path = require('path');
 const { Authflow, Titles } = require('prismarine-auth');
 
 let bot = null;
-let logFile = null;
+let currentWindow = null;
+let flow = null;
+let sellCommandSent = false;
+let totalItems = 0;
+let totalSales = 0;
+let startTime = Date.now();
+let isProcessing = false;
+
+// متغيرات إضافية للأوضاع الأخرى
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -14,24 +22,20 @@ let killCount = 0;
 let deathCount = 0;
 let isDisconnecting = false;
 let isEating = false;
-let isProcessing = false;
-let sellCommandSent = false;
+let logFile = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 999;
-let currentWindow = null;
-let isWaitingForItems = false;
-let checkInterval = null;
 
 const args = process.argv.slice(2);
 const config = {
   botId: process.env.BOT_ID || args[0] || 'unknown',
   minecraftToken: process.env.MC_TOKEN || args[1] || null,
-  username: process.env.BOT_USERNAME || args[2] || 'BotUser',
+  username: process.env.BOT_USERNAME || args[2] || 'Ss51',
   profileId: process.env.BOT_PROFILE_ID || args[3] || null,
-  serverIp: process.env.SERVER_IP || args[4],
-  botType: process.env.BOT_TYPE || args[5] || 'afk',
+  serverIp: process.env.SERVER_IP || args[4] || 'donutsmp.net',
+  botType: process.env.BOT_TYPE || args[5] || 'seller',
   teamNames: process.env.TEAM_NAMES || args[6] || '',
-  version: process.env.MC_VERSION || args[7] || '1.21.10'
+  version: process.env.MC_VERSION || args[7] || '1.21'
 };
 
 if (config.teamNames) teamList = config.teamNames.split(',').map(n => n.trim().toLowerCase());
@@ -44,48 +48,135 @@ function log(msg) {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] ${msg}`); 
   logFile.write(`[${timestamp}] ${msg}\n`); 
-  if (process.send) process.send({ type: 'log', message: msg }); 
 }
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function updateStats() {
-  if (!bot || !bot.entity) return;
-  const stats = {
-    health: bot.health || 20,
-    food: bot.food || 20,
-    position: `${Math.floor(bot.entity.position.x)}, ${Math.floor(bot.entity.position.y)}, ${Math.floor(bot.entity.position.z)}`,
-    armor: getBestArmorName(),
-    weapon: getBestWeaponName(),
-    level: bot.experience?.level || 0,
-    kills: killCount,
-    deaths: deathCount
-  };
-  if (process.send) process.send({ type: 'stats', stats: stats });
-}
-
-function getBestArmorName() {
-  if (!bot.inventory) return 'لا يوجد';
-  const armorTypes = ['netherite', 'diamond', 'iron', 'golden', 'chainmail', 'leather'];
-  for (const type of armorTypes) {
-    const chest = bot.inventory.items().find(i => i.name.includes(`${type}_chestplate`));
-    if (chest) return type;
+// ===== دوال البيع (معدلة لتكون بنفس سرعة الكود الثاني) =====
+function getInventorySlots(window) {
+  const slots = [];
+  for (let i = 54; i <= 89; i++) {
+    if (window.slots[i]) {
+      slots.push(i);
+    }
   }
-  return 'لا يوجد';
+  return slots;
 }
 
-function getBestWeaponName() {
-  if (!bot.inventory) return 'لا يوجد';
-  const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
-  for (const type of weaponTypes) {
-    const weapon = bot.inventory.items().find(i => i.name.includes(type));
-    if (weapon) return weapon.name.replace('_', ' ');
+function countTradeItems(window) {
+  let count = 0;
+  for (let i = 0; i <= 44; i++) {
+    if (window.slots[i]) count++;
   }
-  return 'لا يوجد';
+  return count;
 }
 
+// ===== نقل الأغراض بـ Shift + Click (معدل ليكون بنفس سرعة الكود الثاني) =====
+async function moveAllItems(window) {
+  if (isProcessing) return;
+  isProcessing = true;
+  
+  try {
+    // 1. جلب كل السلوتات في المخزون (54-89)
+    const inventorySlots = getInventorySlots(window);
+    
+    if (inventorySlots.length === 0) {
+      log(`⚠️ المخزون فارغ`);
+      isProcessing = false;
+      return;
+    }
+    
+    log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
+    
+    // 2. Shift + Click على كل غرض في المخزون
+    for (const slot of inventorySlots) {
+      if (window.slots[slot]) {
+        bot.clickWindow(slot, 0, 1); // Shift + Click
+        await sleep(3); // تأخير صغير جداً (نفس الكود الثاني)
+      }
+    }
+    
+    log(`✅ تم نقل كل الأغراض`);
+    
+    // 3. التحقق المستمر: هل امتلأت القائمة؟
+    let checkCount = 0;
+    const maxChecks = 200; // 200 × 50ms = 10 ثواني كحد أقصى
+    
+    while (checkCount < maxChecks) {
+      const tradeCount = countTradeItems(window);
+      
+      if (tradeCount >= 45) {
+        log(`🎯 القائمة ممتلئة! (${tradeCount}/45)`);
+        break;
+      }
+      
+      // إذا كان في أغراض متبقية في المخزون → انقلها
+      const remaining = getInventorySlots(window);
+      if (remaining.length > 0) {
+        log(`📦 نقل ${remaining.length} غرض متبقي`);
+        for (const slot of remaining) {
+          if (window.slots[slot]) {
+            bot.clickWindow(slot, 0, 1);
+            await sleep(3);
+          }
+        }
+      }
+      
+      await sleep(50);
+      checkCount++;
+    }
+    
+    // 4. إغلاق النافذة (بيع تلقائي)
+    const finalCount = countTradeItems(window);
+    if (finalCount > 0) {
+      await sleep(50);
+      log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
+      bot.closeWindow(window);
+      
+      // كتابة /sell مرة ثانية
+      sellCommandSent = false;
+      setTimeout(() => {
+        if (bot) {
+          log(`💬 كتابة /sell`);
+          bot.chat('/sell');
+          sellCommandSent = true;
+        }
+      }, 300);
+    } else {
+      log(`⚠️ لا توجد أغراض للبيع`);
+    }
+    
+  } catch (err) {
+    log(`⚠️ خطأ: ${err.message}`);
+  } finally {
+    isProcessing = false;
+  }
+}
+
+// ===== المصادقة (نفس الكود الأصلي) =====
+async function authenticate() {
+  flow = new Authflow('bot_seller', './ms-cache', {
+    authTitle: Titles.MinecraftJava,
+    deviceType: 'Win32',
+    flow: 'sisu',
+    onMsaCode: (data) => {
+      log(`🔗 ${data.verification_uri}`);
+      log(`🔢 ${data.user_code}`);
+    }
+  });
+  
+  const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
+  if (tokenResult && tokenResult.token && tokenResult.profile) {
+    log(`✅ ${tokenResult.profile.name}`);
+    return tokenResult;
+  } else {
+    throw new Error('فشل المصادقة');
+  }
+}
+
+// ===== دوال للأوضاع الأخرى =====
 function getBestWeapon() {
   if (!bot.inventory) return null;
   const weaponTypes = ['netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'wooden_sword'];
@@ -113,20 +204,7 @@ function equipEverythingFast() {
     }
     const weapon = getBestWeapon();
     if (weapon) bot.equip(weapon, 'hand');
-    const totem = bot.inventory.items().find(i => i.name.includes('totem'));
-    if (totem && bot.supportFeature('doesntHaveOffHandSlot')) bot.equip(totem, 'off-hand');
   } catch (err) {}
-}
-
-function sendInventory() {
-  if (!bot || !bot.inventory) return;
-  const items = bot.inventory.slots.map(slot => slot ? { name: slot.name, count: slot.count, slot: slot.slot } : null);
-  const helmet = bot.inventory.slots[5]?.name || 'فارغ';
-  const chest = bot.inventory.slots[6]?.name || 'فارغ';
-  const legs = bot.inventory.slots[7]?.name || 'فارغ';
-  const boots = bot.inventory.slots[8]?.name || 'فارغ';
-  const weapon = bot.inventory.slots[bot.getEquipmentDestSlot('hand')]?.name || 'فارغ';
-  if (process.send) process.send({ type: 'inventory', inventory: items.slice(9, 45), helmet, chest, legs, boots, weapon });
 }
 
 function followAndAttack(entity, name) {
@@ -165,434 +243,112 @@ function attackNearest() {
   }
 }
 
-async function authenticateBot() {
-  log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
-  const userIdentifier = `bot_${config.botId}_${Date.now()}`;
-  const flow = new Authflow(userIdentifier, './ms-cache', {
-    authTitle: Titles.MinecraftJava,
-    deviceType: 'Win32',
-    flow: 'sisu',
-    onMsaCode: (data) => {
-      log(`🔗 رابط المصادقة: ${data.verification_uri}`);
-      log(`🔢 الرمز: ${data.user_code}`);
-      log(`⏱️ الرمز صالح لمدة ${data.expires_in} ثانية`);
-      log(`📌 الرجاء فتح الرابط في متصفح وإدخال الرمز`);
-    }
-  });
-  const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
-  if (tokenResult && tokenResult.token && tokenResult.profile) {
-    log(`✅ تم الحصول على التوكن الحساب: ${tokenResult.profile.name}`);
-    return tokenResult;
-  } else {
-    throw new Error('فشل الحصول على التوكن');
-  }
-}
-
 function cleanup() {
   if (combatInterval) clearInterval(combatInterval);
   if (huntInterval) clearInterval(huntInterval);
-  if (checkInterval) clearInterval(checkInterval);
-  combatInterval = huntInterval = checkInterval = null;
+  combatInterval = huntInterval = null;
   currentTarget = null;
-  currentWindow = null;
-}
-
-// ===== وظائف البيع السريع (وضع البياع) =====
-function getInventorySlots(window) {
-  const slots = [];
-  if (!window || !window.slots) return slots;
-  for (let i = 54; i <= 89; i++) {
-    if (window.slots[i]) {
-      slots.push(i);
-    }
-  }
-  return slots;
-}
-
-function countTradeItems(window) {
-  let count = 0;
-  if (!window || !window.slots) return count;
-  for (let i = 0; i <= 44; i++) {
-    if (window.slots[i]) count++;
-  }
-  return count;
-}
-
-function hasItemsInInventory(window) {
-  const slots = getInventorySlots(window);
-  return slots.length > 0;
-}
-
-async function moveAllItems(window) {
-  if (isProcessing) return;
-  if (!window || !window.slots) {
-    log(`⚠️ النافذة غير صالحة`);
-    return;
-  }
-  
-  isProcessing = true;
-  isWaitingForItems = false;
-  
-  if (checkInterval) {
-    clearInterval(checkInterval);
-    checkInterval = null;
-  }
-  
-  try {
-    // التحقق من وجود النافذة قبل كل عملية
-    if (!currentWindow || currentWindow !== window) {
-      log(`⚠️ النافذة تغيرت، إلغاء العملية`);
-      isProcessing = false;
-      return;
-    }
-    
-    const inventorySlots = getInventorySlots(window);
-    
-    if (inventorySlots.length === 0) {
-      log(`⚠️ المخزون فارغ - جاري الانتظار لوصول أغراض جديدة...`);
-      isWaitingForItems = true;
-      
-      checkInterval = setInterval(() => {
-        if (currentWindow && !isProcessing && isWaitingForItems && currentWindow === window) {
-          const hasItems = hasItemsInInventory(currentWindow);
-          if (hasItems) {
-            log(`📦 تم اكتشاف أغراض جديدة في المخزون!`);
-            isWaitingForItems = false;
-            if (checkInterval) {
-              clearInterval(checkInterval);
-              checkInterval = null;
-            }
-            moveAllItems(currentWindow);
-          } else {
-            log(`⏳ لا زال المخزون فارغاً... انتظار المزيد`);
-          }
-        } else {
-          if (checkInterval) {
-            clearInterval(checkInterval);
-            checkInterval = null;
-          }
-          isWaitingForItems = false;
-        }
-      }, 5000);
-      
-      isProcessing = false;
-      return;
-    }
-    
-    log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
-    
-    for (const slot of inventorySlots) {
-      if (!currentWindow || currentWindow !== window || !window.slots[slot]) {
-        log(`⚠️ توقف: النافذة تغيرت أو السلوت غير موجود`);
-        break;
-      }
-      try {
-        bot.clickWindow(slot, 0, 1);
-        await sleep(50);
-      } catch (err) {
-        log(`⚠️ فشل النقر على السلوت ${slot}: ${err.message}`);
-      }
-    }
-    
-    log(`✅ تم نقل كل الأغراض`);
-    
-    let checkCount = 0;
-    const maxChecks = 100;
-    
-    while (checkCount < maxChecks && !isWaitingForItems) {
-      if (!currentWindow || currentWindow !== window) {
-        log(`⚠️ النافذة تغيرت أثناء النقل`);
-        break;
-      }
-      
-      const tradeCount = countTradeItems(window);
-      
-      if (tradeCount >= 45) {
-        log(`🎯 القائمة ممتلئة! (${tradeCount}/45)`);
-        break;
-      }
-      
-      const remaining = getInventorySlots(window);
-      if (remaining.length > 0) {
-        log(`📦 نقل ${remaining.length} غرض متبقي`);
-        for (const slot of remaining) {
-          if (!currentWindow || currentWindow !== window || !window.slots[slot]) break;
-          try {
-            bot.clickWindow(slot, 0, 1);
-            await sleep(50);
-          } catch (err) {
-            log(`⚠️ فشل النقر: ${err.message}`);
-          }
-        }
-      }
-      
-      await sleep(100);
-      checkCount++;
-    }
-    
-    if (!currentWindow || currentWindow !== window) {
-      log(`⚠️ النافذة تغيرت، لن يتم الإغلاق`);
-      isProcessing = false;
-      return;
-    }
-    
-    const finalCount = countTradeItems(window);
-    if (finalCount > 0) {
-      await sleep(100);
-      log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
-      try {
-        bot.closeWindow(window);
-      } catch (err) {
-        log(`⚠️ فشل إغلاق النافذة: ${err.message}`);
-      }
-      
-      if (!sellCommandSent) {
-        sellCommandSent = true;
-        setTimeout(() => {
-          if (bot) {
-            log(`💬 كتابة /sell`);
-            bot.chat('/sell');
-            setTimeout(() => { sellCommandSent = false; }, 2000);
-          }
-        }, 500);
-      }
-    } else {
-      log(`⚠️ لا توجد أغراض للبيع، جاري الانتظار...`);
-      isWaitingForItems = true;
-      
-      checkInterval = setInterval(() => {
-        if (currentWindow && !isProcessing && isWaitingForItems && currentWindow === window) {
-          const hasItems = hasItemsInInventory(currentWindow);
-          if (hasItems) {
-            log(`📦 تم اكتشاف أغراض جديدة!`);
-            isWaitingForItems = false;
-            if (checkInterval) {
-              clearInterval(checkInterval);
-              checkInterval = null;
-            }
-            moveAllItems(currentWindow);
-          }
-        }
-      }, 5000);
-    }
-    
-  } catch (err) {
-    log(`⚠️ خطأ في البيع: ${err.message}`);
-  } finally {
-    if (!isWaitingForItems) {
-      isProcessing = false;
-    }
-  }
 }
 
 // ===== تشغيل البوت =====
-async function createBot() {
-  const authType = process.env.AUTH_TYPE || 'offline';
-  
-  log(`📌 [DEBUG] نوع البوت المستلم: ${config.botType}`);
-  log(`📌 [DEBUG] نوع المصادقة: ${authType}`);
-  
-  if (authType === 'microsoft' && (!config.minecraftToken || config.minecraftToken === '')) {
-    log(`⚠️ البوت من نوع "حساب حقيقي" لكن لا يوجد توكن مخزن. سيتم بدء المصادقة...`);
-    try {
-      const tokenData = await authenticateBot();
-      config.minecraftToken = tokenData.token;
-      config.username = tokenData.profile.name;
-      config.profileId = tokenData.profile.id;
-    } catch (err) {
-      log(`❌ فشل المصادقة: ${err.message}`);
-      log(`❌ لن يتم تشغيل البوت بدون توكن صالح.`);
-      process.exit(1);
-    }
-  }
-
-  log(`🤖 تشغيل بوت ${config.botType} على ${config.serverIp} [${config.version}] باسم ${config.username} (${config.minecraftToken ? 'حساب حقيقي' : 'وضع غير مسجل'})`);
-  
-  const authConfig = {
-    host: config.serverIp,
-    port: 25565,
-    username: config.username,
-    version: config.version,
-    auth: config.minecraftToken ? 'microsoft' : 'offline',
-    session: config.minecraftToken ? {
-      accessToken: config.minecraftToken,
-      selectedProfile: { id: config.profileId, name: config.username }
-    } : undefined,
-    connectTimeout: 5000,
-    checkTimeoutInterval: 0,
-    keepAlive: true,
-    viewDistance: 'tiny',
-    skipValidation: true,
-  };
-  
-  bot = mineflayer.createBot(authConfig);
-  bot.loadPlugin(pathfinder);
-
-  bot.on('login', () => {
-    log(`✅ دخل البوت بنجاح باسم ${bot.username}`);
-    reconnectAttempts = 0;
-  });
-  
-  bot.on('spawn', async () => {
-    log(`📍 ظهر البوت في العالم`);
+async function startBot() {
+  try {
+    const tokenData = await authenticate();
+    startTime = Date.now();
+    totalItems = 0;
+    totalSales = 0;
     
-    setTimeout(() => equipEverythingFast(), 100);
-    setInterval(() => equipEverythingFast(), 1000);
-    setInterval(() => updateStats(), 1000);
-    setInterval(() => sendInventory(), 3000);
-    
-    setInterval(() => {
-      if (!bot || !bot.entity || bot.health <= 0) return;
-      if (isEating) return;
-      if (bot.food < 18 && bot.food > 0) {
-        const food = bot.inventory.items().find(i => i.name.includes('bread') || i.name.includes('apple') || i.name.includes('cooked') || i.name.includes('steak') || i.name.includes('golden_apple'));
-        if (food) {
-          isEating = true;
-          bot.equip(food, 'hand').then(() => {
-            bot.consume().catch(err => {
-              log(`⚠️ فشل الأكل: ${err.message}`);
-            }).finally(() => {
-              setTimeout(() => { isEating = false; }, 1000);
-            });
-          }).catch(err => {
-            log(`⚠️ فشل تجهيز الطعام: ${err.message}`);
-            isEating = false;
-          });
-          log(`🍴 بدأ أكل ${food.name}`);
-        }
+    bot = mineflayer.createBot({
+      host: config.serverIp,
+      port: 25565,
+      username: tokenData.profile.name,
+      version: config.version,
+      auth: 'microsoft',
+      session: {
+        accessToken: tokenData.token,
+        selectedProfile: { id: tokenData.profile.id, name: tokenData.profile.name }
       }
-    }, 5000);
-
-    // =========================================
-    // ===== وضع البياع (SELLER) =====
-    // =========================================
-    if (config.botType === 'seller') {
-      log(`🛒 تفعيل وضع البياع - جاري الانتظار لفتح نافذة البيع...`);
-      
-      setTimeout(() => {
-        if (bot && !sellCommandSent) {
-          sellCommandSent = true;
-          bot.chat('/sell');
-          log(`💬 كتابة /sell`);
-          setTimeout(() => { sellCommandSent = false; }, 2000);
-        }
-      }, 2000);
-
-      bot.on('windowOpen', async (window) => {
-        if (currentWindow === window && isProcessing) {
-          log(`⏳ جاري معالجة هذه النافذة بالفعل`);
-          return;
-        }
-        
-        currentWindow = window;
-        log(`📦 نافذة مفتوحة (وضع البياع)`);
-        isProcessing = false;
-        isWaitingForItems = false;
-        await sleep(100);
-        moveAllItems(window);
-      });
-
-      bot.on('windowClose', () => {
-        if (currentWindow) {
-          currentWindow = null;
-          isWaitingForItems = false;
-          if (checkInterval) {
-            clearInterval(checkInterval);
-            checkInterval = null;
-          }
-          log(`📦 نافذة مقفلة (وضع البياع)`);
-          
-          setTimeout(() => {
-            if (bot && !isProcessing && !sellCommandSent) {
-              sellCommandSent = true;
-              bot.chat('/sell');
-              log(`💬 إعادة كتابة /sell`);
-              setTimeout(() => { sellCommandSent = false; }, 2000);
-            }
-          }, 500);
-        }
-      });
-      
-    // =========================================
-    // ===== الأوضاع الأخرى =====
-    // =========================================
-    } else if (config.botType === 'afk') {
-      bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
-      
-    } else if (config.botType === 'hunter') {
-      huntInterval = setInterval(() => attackNearest(), 2000);
-      bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
-      
-    } else if (config.botType === 'coward') {
-      bot.on('entityHurt', (entity) => {
-        if (entity === bot.entity) {
-          log(`😨 تعرض البوت للضرب! قطع الاتصال فوراً.`);
-          if (bot && !isDisconnecting) {
-            isDisconnecting = true;
-            bot.end();
-            setTimeout(() => process.exit(0), 100);
-          } else {
-            process.exit(0);
-          }
-        }
-      });
-    }
-  });
-
-  bot.on('death', () => {
-    deathCount++;
-    log(`💀 مات البوت (إجمالي الوفيات: ${deathCount})`);
-    setTimeout(() => equipEverythingFast(), 500);
-  });
-  
-  bot.on('entityHurt', (entity) => {
-    if (entity === bot.entity) return;
-    const player = bot.players[entity.username];
-    if (player && player !== bot.player && !teamList.includes(entity.username?.toLowerCase())) {
-      killCount++;
-      log(`⚔️ قتل ${entity.username}! (إجمالي القتلى: ${killCount})`);
-    }
-  });
-
-  bot.on('chat', (username, msg) => log(`💬 [${username}]: ${msg}`));
-  
-  bot.on('end', (reason) => {
-    log(`❌ انقطع الاتصال: ${reason}`);
-    cleanup();
-    sellCommandSent = false;
-    isProcessing = false;
-    isWaitingForItems = false;
-    currentWindow = null;
+    });
     
-    if (isDisconnecting) {
-      process.exit(0);
-    } else {
-      reconnectAttempts++;
-      log(`🔄 إعادة محاولة الاتصال (${reconnectAttempts})...`);
-      setTimeout(() => {
-        createBot();
-      }, 3000);
-    }
-  });
-  
-  bot.on('error', (err) => log(`⚠️ خطأ في البوت: ${err.message}`));
-}
+    bot.loadPlugin(pathfinder);
 
-process.on('message', (msg) => {
-  if (msg && msg.type === 'disconnect') {
-    log(`📢 استلام أمر قطع الاتصال. يتم قطع الاتصال بالسيرفر...`);
-    if (bot && !isDisconnecting) {
-      isDisconnecting = true;
-      bot.end();
-      setTimeout(() => process.exit(0), 500);
-    } else {
-      process.exit(0);
-    }
-  } else if (msg && msg.type === 'force_exit') {
-    log(`📢 أمر إنهاء فوري (غير نظيف).`);
-    process.exit(0);
+    bot.on('login', () => log(`✅ دخل`));
+    
+    bot.on('spawn', () => {
+      log(`📍 ظهر البوت في العالم`);
+      
+      setTimeout(() => equipEverythingFast(), 100);
+      setInterval(() => equipEverythingFast(), 1000);
+      
+      // ===== وضع البياع (SELLER) - معدل ليكون مطابقاً للكود الثاني =====
+      if (config.botType === 'seller') {
+        log(`🛒 تفعيل وضع البياع`);
+        
+        // كتابة /sell بعد 1.5 ثانية (نفس الكود الثاني)
+        setTimeout(() => {
+          if (bot && !sellCommandSent) {
+            sellCommandSent = true;
+            bot.chat('/sell');
+            log(`💬 كتابة /sell`);
+          }
+        }, 1500);
+        
+        // معالج فتح النافذة (نفس الكود الثاني)
+        bot.on('windowOpen', async (window) => {
+          currentWindow = window;
+          log(`📦 نافذة مفتوحة`);
+          isProcessing = false;
+          await sleep(50);
+          moveAllItems(window);
+        });
+        
+        // معالج إغلاق النافذة (نفس الكود الثاني)
+        bot.on('windowClose', () => {
+          currentWindow = null;
+          log(`📦 نافذة مقفلة`);
+        });
+      
+      // ===== وضع AFK =====
+      } else if (config.botType === 'afk') {
+        bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
+      
+      // ===== وضع HUNTER =====
+      } else if (config.botType === 'hunter') {
+        huntInterval = setInterval(() => attackNearest(), 2000);
+        bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
+      
+      // ===== وضع COWARD =====
+      } else if (config.botType === 'coward') {
+        bot.on('entityHurt', (entity) => {
+          if (entity === bot.entity) {
+            log(`😨 تعرض البوت للضرب! قطع الاتصال فوراً.`);
+            if (bot && !isDisconnecting) {
+              isDisconnecting = true;
+              bot.end();
+              setTimeout(() => process.exit(0), 100);
+            }
+          }
+        });
+      }
+    });
+    
+    bot.on('error', (err) => log(`⚠️ ${err.message}`));
+    
+    bot.on('end', () => {
+      currentWindow = null;
+      sellCommandSent = false;
+      cleanup();
+      log(`🔄 إعادة تشغيل...`);
+      setTimeout(startBot, 3000);
+    });
+    
+    log(`🤖 شغال بوضع: ${config.botType}`);
+    
+  } catch (err) {
+    log(`❌ ${err.message}`);
+    setTimeout(startBot, 5000);
   }
-});
+}
 
 process.on('SIGINT', () => {
   if (bot && !isDisconnecting) {
@@ -614,4 +370,4 @@ process.on('SIGTERM', () => {
   }
 });
 
-createBot();
+startBot();
