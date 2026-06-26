@@ -3,12 +3,9 @@ const { pathfinder } = require('mineflayer-pathfinder');
 const fs = require('fs');
 const path = require('path');
 const { Authflow, Titles } = require('prismarine-auth');
-const axios = require('axios');
-const localtunnel = require('localtunnel');
 
 let bot = null;
 let logFile = null;
-let viewerStarted = false;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -129,7 +126,7 @@ function sendInventory() {
   const legs = bot.inventory.slots[7]?.name || 'فارغ';
   const boots = bot.inventory.slots[8]?.name || 'فارغ';
   const weapon = bot.inventory.slots[bot.getEquipmentDestSlot('hand')]?.name || 'فارغ';
-  process.send({ type: 'inventory', inventory: items.slice(9, 45), helmet, chest, legs, boots, weapon });
+  if (process.send) process.send({ type: 'inventory', inventory: items.slice(9, 45), helmet, chest, legs, boots, weapon });
 }
 
 function followAndAttack(entity, name) {
@@ -168,28 +165,6 @@ function attackNearest() {
   }
 }
 
-async function startViewer() {
-  if (viewerStarted) return;
-  try {
-    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
-    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
-    viewerStarted = true;
-    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-
-    const tunnel = await localtunnel({ port: viewerPort });
-    log(`🌍 كاميرا عامة عبر LocalTunnel: ${tunnel.url}`);
-
-    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
-    await axios.post(`${apiUrl}/api/register-camera-url`, {
-      botId: config.botId,
-      url: tunnel.url
-    });
-  } catch (err) {
-    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
-  }
-}
-
 async function authenticateBot() {
   log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
   const userIdentifier = `bot_${config.botId}_${Date.now()}`;
@@ -201,26 +176,13 @@ async function authenticateBot() {
       log(`🔗 رابط المصادقة: ${data.verification_uri}`);
       log(`🔢 الرمز: ${data.user_code}`);
       log(`⏱️ الرمز صالح لمدة ${data.expires_in} ثانية`);
-      log(`📌 الرجاء فتح الرابط في متصفح (يفضل نافذة خاصة) وإدخال الرمز`);
+      log(`📌 الرجاء فتح الرابط في متصفح وإدخال الرمز`);
     }
   });
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
     log(`✅ تم الحصول على التوكن الحساب: ${tokenResult.profile.name}`);
-    const apiUrl = process.env.API_URL || 'http://localhost:3000';
-    try {
-      await axios.post(`${apiUrl}/api/save-bot-token`, {
-        botId: config.botId,
-        mcToken: tokenResult.token,
-        mcUsername: tokenResult.profile.name,
-        mcProfileId: tokenResult.profile.id
-      });
-      log(`💾 تم حفظ التوكن في قاعدة البيانات`);
-      return tokenResult;
-    } catch (err) {
-      log(`❌ فشل حفظ التوكن على الخادم: ${err.message}`);
-      throw err;
-    }
+    return tokenResult;
   } else {
     throw new Error('فشل الحصول على التوكن');
   }
@@ -238,6 +200,7 @@ function cleanup() {
 // ===== وظائف البيع السريع (وضع البياع) =====
 function getInventorySlots(window) {
   const slots = [];
+  if (!window || !window.slots) return slots;
   for (let i = 54; i <= 89; i++) {
     if (window.slots[i]) {
       slots.push(i);
@@ -248,6 +211,7 @@ function getInventorySlots(window) {
 
 function countTradeItems(window) {
   let count = 0;
+  if (!window || !window.slots) return count;
   for (let i = 0; i <= 44; i++) {
     if (window.slots[i]) count++;
   }
@@ -261,6 +225,11 @@ function hasItemsInInventory(window) {
 
 async function moveAllItems(window) {
   if (isProcessing) return;
+  if (!window || !window.slots) {
+    log(`⚠️ النافذة غير صالحة`);
+    return;
+  }
+  
   isProcessing = true;
   isWaitingForItems = false;
   
@@ -270,6 +239,13 @@ async function moveAllItems(window) {
   }
   
   try {
+    // التحقق من وجود النافذة قبل كل عملية
+    if (!currentWindow || currentWindow !== window) {
+      log(`⚠️ النافذة تغيرت، إلغاء العملية`);
+      isProcessing = false;
+      return;
+    }
+    
     const inventorySlots = getInventorySlots(window);
     
     if (inventorySlots.length === 0) {
@@ -277,7 +253,7 @@ async function moveAllItems(window) {
       isWaitingForItems = true;
       
       checkInterval = setInterval(() => {
-        if (currentWindow && !isProcessing && isWaitingForItems) {
+        if (currentWindow && !isProcessing && isWaitingForItems && currentWindow === window) {
           const hasItems = hasItemsInInventory(currentWindow);
           if (hasItems) {
             log(`📦 تم اكتشاف أغراض جديدة في المخزون!`);
@@ -290,6 +266,12 @@ async function moveAllItems(window) {
           } else {
             log(`⏳ لا زال المخزون فارغاً... انتظار المزيد`);
           }
+        } else {
+          if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
+          }
+          isWaitingForItems = false;
         }
       }, 5000);
       
@@ -300,18 +282,29 @@ async function moveAllItems(window) {
     log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
     
     for (const slot of inventorySlots) {
-      if (window.slots[slot]) {
+      if (!currentWindow || currentWindow !== window || !window.slots[slot]) {
+        log(`⚠️ توقف: النافذة تغيرت أو السلوت غير موجود`);
+        break;
+      }
+      try {
         bot.clickWindow(slot, 0, 1);
-        await sleep(3);
+        await sleep(50);
+      } catch (err) {
+        log(`⚠️ فشل النقر على السلوت ${slot}: ${err.message}`);
       }
     }
     
     log(`✅ تم نقل كل الأغراض`);
     
     let checkCount = 0;
-    const maxChecks = 200;
+    const maxChecks = 100;
     
     while (checkCount < maxChecks && !isWaitingForItems) {
+      if (!currentWindow || currentWindow !== window) {
+        log(`⚠️ النافذة تغيرت أثناء النقل`);
+        break;
+      }
+      
       const tradeCount = countTradeItems(window);
       
       if (tradeCount >= 45) {
@@ -323,37 +316,52 @@ async function moveAllItems(window) {
       if (remaining.length > 0) {
         log(`📦 نقل ${remaining.length} غرض متبقي`);
         for (const slot of remaining) {
-          if (window.slots[slot]) {
+          if (!currentWindow || currentWindow !== window || !window.slots[slot]) break;
+          try {
             bot.clickWindow(slot, 0, 1);
-            await sleep(3);
+            await sleep(50);
+          } catch (err) {
+            log(`⚠️ فشل النقر: ${err.message}`);
           }
         }
       }
       
-      await sleep(50);
+      await sleep(100);
       checkCount++;
+    }
+    
+    if (!currentWindow || currentWindow !== window) {
+      log(`⚠️ النافذة تغيرت، لن يتم الإغلاق`);
+      isProcessing = false;
+      return;
     }
     
     const finalCount = countTradeItems(window);
     if (finalCount > 0) {
-      await sleep(50);
+      await sleep(100);
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
-      bot.closeWindow(window);
+      try {
+        bot.closeWindow(window);
+      } catch (err) {
+        log(`⚠️ فشل إغلاق النافذة: ${err.message}`);
+      }
       
-      sellCommandSent = false;
-      setTimeout(() => {
-        if (bot) {
-          log(`💬 كتابة /sell`);
-          bot.chat('/sell');
-          sellCommandSent = true;
-        }
-      }, 300);
+      if (!sellCommandSent) {
+        sellCommandSent = true;
+        setTimeout(() => {
+          if (bot) {
+            log(`💬 كتابة /sell`);
+            bot.chat('/sell');
+            setTimeout(() => { sellCommandSent = false; }, 2000);
+          }
+        }, 500);
+      }
     } else {
       log(`⚠️ لا توجد أغراض للبيع، جاري الانتظار...`);
       isWaitingForItems = true;
       
       checkInterval = setInterval(() => {
-        if (currentWindow && !isProcessing && isWaitingForItems) {
+        if (currentWindow && !isProcessing && isWaitingForItems && currentWindow === window) {
           const hasItems = hasItemsInInventory(currentWindow);
           if (hasItems) {
             log(`📦 تم اكتشاف أغراض جديدة!`);
@@ -454,8 +462,6 @@ async function createBot() {
         }
       }
     }, 5000);
-    
-    if (!viewerStarted) await startViewer();
 
     // =========================================
     // ===== وضع البياع (SELLER) =====
@@ -463,43 +469,48 @@ async function createBot() {
     if (config.botType === 'seller') {
       log(`🛒 تفعيل وضع البياع - جاري الانتظار لفتح نافذة البيع...`);
       
-      // إرسال أمر /sell عند الظهور
       setTimeout(() => {
         if (bot && !sellCommandSent) {
           sellCommandSent = true;
           bot.chat('/sell');
           log(`💬 كتابة /sell`);
+          setTimeout(() => { sellCommandSent = false; }, 2000);
         }
       }, 2000);
 
-      // مراقبة فتح النافذة
       bot.on('windowOpen', async (window) => {
+        if (currentWindow === window && isProcessing) {
+          log(`⏳ جاري معالجة هذه النافذة بالفعل`);
+          return;
+        }
+        
         currentWindow = window;
         log(`📦 نافذة مفتوحة (وضع البياع)`);
         isProcessing = false;
         isWaitingForItems = false;
-        await sleep(50);
+        await sleep(100);
         moveAllItems(window);
       });
 
       bot.on('windowClose', () => {
-        currentWindow = null;
-        isWaitingForItems = false;
-        if (checkInterval) {
-          clearInterval(checkInterval);
-          checkInterval = null;
-        }
-        log(`📦 نافذة مقفلة (وضع البياع)`);
-        
-        // إعادة كتابة /sell بعد إغلاق النافذة
-        setTimeout(() => {
-          if (bot && !isProcessing) {
-            sellCommandSent = false;
-            bot.chat('/sell');
-            log(`💬 إعادة كتابة /sell`);
-            sellCommandSent = true;
+        if (currentWindow) {
+          currentWindow = null;
+          isWaitingForItems = false;
+          if (checkInterval) {
+            clearInterval(checkInterval);
+            checkInterval = null;
           }
-        }, 500);
+          log(`📦 نافذة مقفلة (وضع البياع)`);
+          
+          setTimeout(() => {
+            if (bot && !isProcessing && !sellCommandSent) {
+              sellCommandSent = true;
+              bot.chat('/sell');
+              log(`💬 إعادة كتابة /sell`);
+              setTimeout(() => { sellCommandSent = false; }, 2000);
+            }
+          }, 500);
+        }
       });
       
     // =========================================
@@ -548,7 +559,6 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    viewerStarted = false;
     sellCommandSent = false;
     isProcessing = false;
     isWaitingForItems = false;
