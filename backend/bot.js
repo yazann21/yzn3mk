@@ -19,8 +19,7 @@ let sellCommandSent = false;
 let isProcessing = false;
 let isSellerMode = false;
 let currentWindow = null;
-let isClosing = false;
-let botReady = false;
+let isClosing = false; // منع تكرار الإغلاق
 
 const args = process.argv.slice(2);
 const config = {
@@ -88,7 +87,7 @@ async function moveAllItems(window) {
     for (const slot of inventorySlots) {
       if (window.slots[slot]) {
         bot.clickWindow(slot, 0, 1);
-        await sleep(5);
+        await sleep(3);
       }
     }
     
@@ -111,7 +110,7 @@ async function moveAllItems(window) {
         for (const slot of remaining) {
           if (window.slots[slot]) {
             bot.clickWindow(slot, 0, 1);
-            await sleep(5);
+            await sleep(3);
           }
         }
       }
@@ -122,7 +121,7 @@ async function moveAllItems(window) {
     
     const finalCount = countTradeItems(window);
     if (finalCount > 0) {
-      await sleep(100);
+      await sleep(50);
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
       isClosing = true;
       bot.closeWindow(window);
@@ -341,7 +340,6 @@ async function createBot() {
   
   bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
-    botReady = true;
     
     setTimeout(() => equipEverythingFast(), 100);
     setInterval(() => equipEverythingFast(), 1000);
@@ -374,46 +372,54 @@ async function createBot() {
     if (config.botType === 'seller') {
       const sellCmd = process.env.SELL_COMMAND || '/sell';
       isSellerMode = true;
+      let windowOpenHandler = null;
+      let windowCloseHandler = null;
       
       log(`🛒 تشغيل بوت البياع (نقل بـ Shift+Click)`);
       
-      // الانتظار 3 ثواني قبل كتابة /sell للتأكد من استقرار الاتصال
+      // كتابة /sell (مرة واحدة فقط)
       setTimeout(() => {
-        if (bot && botReady && !sellCommandSent) {
+        if (bot && !sellCommandSent) {
           sellCommandSent = true;
-          log(`💬 كتابة /sell`);
           bot.chat(sellCmd);
         }
-      }, 3000);
+      }, 1500);
 
       // عند فتح النافذة
-      bot.on('windowOpen', async (window) => {
-        if (currentWindow) return;
+      windowOpenHandler = async (window) => {
+        if (currentWindow) return; // منع التكرار
         currentWindow = window;
         log(`📦 نافذة مفتوحة`);
         isProcessing = false;
-        await sleep(100);
+        await sleep(50);
         moveAllItems(window);
-      });
+      };
+      
+      bot.on('windowOpen', windowOpenHandler);
 
       // عند إغلاق النافذة
-      bot.on('windowClose', () => {
-        if (isClosing) return;
+      windowCloseHandler = () => {
+        if (isClosing) return; // منع التكرار أثناء الإغلاق
         if (!currentWindow) return;
         
         currentWindow = null;
         log(`📦 نافذة مقفلة`);
         
-        // الانتظار 1 ثانية قبل إعادة كتابة /sell
+        // إعادة كتابة /sell بعد 500ms
         sellCommandSent = false;
         setTimeout(() => {
-          if (bot && botReady && isSellerMode && !sellCommandSent) {
+          if (bot && isSellerMode && !sellCommandSent) {
             sellCommandSent = true;
             log(`💬 إعادة كتابة /sell`);
             bot.chat(sellCmd);
           }
-        }, 1000);
-      });
+        }, 500);
+      };
+      
+      bot.on('windowClose', windowCloseHandler);
+      
+      // حفظ المراجع لتنظيفها لاحقاً
+      bot._sellerHandlers = { windowOpenHandler, windowCloseHandler };
     }
     
     // ========== الأنواع الأخرى ==========
@@ -458,7 +464,6 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    botReady = false;
     if (isDisconnecting) {
       process.exit(0);
     }
