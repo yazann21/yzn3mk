@@ -23,7 +23,6 @@ let totalSales = 0;
 let startTime = Date.now();
 let isProcessing = false;
 let currentWindow = null;
-let waitingForItems = false; // متغير لتتبع حالة الانتظار
 
 const args = process.argv.slice(2);
 const config = {
@@ -187,66 +186,34 @@ function countTradeItems(window) {
   return count;
 }
 
-// ===== نقل الأغراض بـ Shift + Click (مع الانتظار إذا كان المخزون فارغ) =====
+// ===== نقل الأغراض بـ Shift + Click (نفس البوت الثاني تماماً) =====
 async function moveAllItems(window) {
   if (isProcessing) return;
   isProcessing = true;
-  waitingForItems = false;
   
   try {
     // 1. جلب كل السلوتات في المخزون (54-89)
-    let inventorySlots = getInventorySlots(window);
+    const inventorySlots = getInventorySlots(window);
     
-    // إذا كان المخزون فارغ، انتظر حتى تأتي أغراض
-    if (inventorySlots.length === 0) {
-      log(`⏳ المخزون فارغ، في انتظار وصول أغراض...`);
-      waitingForItems = true;
+    // ✅ تم إزالة التحقق من المخزون الفارغ
+    // البوت ينقل الأغراض فور وجودها
+    
+    if (inventorySlots.length > 0) {
+      log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
       
-      // استمر في التحقق كل ثانية
-      let waitCount = 0;
-      const maxWait = 300; // 300 ثانية كحد أقصى (5 دقائق)
-      
-      while (waitCount < maxWait && waitingForItems) {
-        await sleep(1000);
-        inventorySlots = getInventorySlots(window);
-        if (inventorySlots.length > 0) {
-          log(`✅ تم استلام ${inventorySlots.length} غرض/أغراض جديدة!`);
-          waitingForItems = false;
-          break;
-        }
-        waitCount++;
-        if (waitCount % 10 === 0) {
-          log(`⏳ لا زال المخزون فارغاً... (${waitCount} ثانية)`);
+      // 2. Shift + Click على كل غرض في المخزون
+      for (const slot of inventorySlots) {
+        if (window.slots[slot]) {
+          bot.clickWindow(slot, 0, 1); // Shift + Click
+          await sleep(3); // تأخير صغير جداً للحفاظ على السرعة
         }
       }
       
-      if (inventorySlots.length === 0) {
-        log(`⏰ انتهى وقت الانتظار، سيتم إعادة محاولة البيع لاحقاً`);
-        isProcessing = false;
-        waitingForItems = false;
-        // إعادة كتابة /sell بعد فترة
-        setTimeout(() => {
-          if (bot && !sellCommandSent) {
-            sellCommandSent = true;
-            log(`💬 إعادة كتابة /sell`);
-            bot.chat('/sell');
-          }
-        }, 5000);
-        return;
-      }
+      log(`✅ تم نقل كل الأغراض`);
+    } else {
+      // ✅ رسالة بديلة بدون كلمة "فارغ"
+      log(`📦 مافي اشي بالمخزون قاعد استنى`);
     }
-    
-    log(`📦 نقل ${inventorySlots.length} غرض بـ Shift+Click`);
-    
-    // 2. Shift + Click على كل غرض في المخزون
-    for (const slot of inventorySlots) {
-      if (window.slots[slot]) {
-        bot.clickWindow(slot, 0, 1); // Shift + Click
-        await sleep(3); // تأخير صغير جداً للحفاظ على السرعة
-      }
-    }
-    
-    log(`✅ تم نقل كل الأغراض`);
     
     // 3. التحقق المستمر: هل امتلأت القائمة؟
     let checkCount = 0;
@@ -293,23 +260,13 @@ async function moveAllItems(window) {
         }
       }, 300);
     } else {
-      log(`⚠️ لا توجد أغراض للبيع، سيتم إعادة المحاولة`);
-      // إعادة كتابة /sell
-      sellCommandSent = false;
-      setTimeout(() => {
-        if (bot) {
-          log(`💬 إعادة كتابة /sell`);
-          bot.chat('/sell');
-          sellCommandSent = true;
-        }
-      }, 2000);
+      log(`⚠️ لا توجد أغراض للبيع في القائمة`);
     }
     
   } catch (err) {
     log(`⚠️ خطأ في moveAllItems: ${err.message}`);
   } finally {
     isProcessing = false;
-    waitingForItems = false;
   }
 }
 
@@ -461,7 +418,6 @@ async function createBot() {
       // ===== حدث إغلاق النافذة =====
       bot.on('windowClose', () => {
         currentWindow = null;
-        waitingForItems = false;
         log(`📦 نافذة مقفلة`);
       });
       
@@ -517,7 +473,6 @@ async function createBot() {
     sellCommandSent = false;
     currentWindow = null;
     isProcessing = false;
-    waitingForItems = false;
     if (isDisconnecting) {
       process.exit(0);
     }
