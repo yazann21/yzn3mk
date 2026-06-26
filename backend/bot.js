@@ -4,11 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const { Authflow, Titles } = require('prismarine-auth');
 const axios = require('axios');
-const localtunnel = require('localtunnel');
 
 let bot = null;
 let logFile = null;
-let viewerStarted = false;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -18,10 +16,11 @@ let deathCount = 0;
 let isDisconnecting = false;
 let isEating = false;
 let sellCommandSent = false;
-let totalItems = 0;
-let totalSales = 0;
-let startTime = Date.now();
 let isProcessing = false;
+let isSellerMode = false;
+let currentWindow = null;
+let isClosing = false;
+let botReady = false;
 
 const args = process.argv.slice(2);
 const config = {
@@ -79,7 +78,7 @@ async function moveAllItems(window) {
     const inventorySlots = getInventorySlots(window);
     
     if (inventorySlots.length === 0) {
-      log(`⚠️ المخزون فارغ`);
+      log(`⏳ المخزون فارغ، انتظار أغراض جديدة...`);
       isProcessing = false;
       return;
     }
@@ -89,14 +88,14 @@ async function moveAllItems(window) {
     for (const slot of inventorySlots) {
       if (window.slots[slot]) {
         bot.clickWindow(slot, 0, 1);
-        await sleep(3);
+        await sleep(5);
       }
     }
     
     log(`✅ تم نقل كل الأغراض`);
     
     let checkCount = 0;
-    const maxChecks = 200;
+    const maxChecks = 300;
     
     while (checkCount < maxChecks) {
       const tradeCount = countTradeItems(window);
@@ -112,7 +111,7 @@ async function moveAllItems(window) {
         for (const slot of remaining) {
           if (window.slots[slot]) {
             bot.clickWindow(slot, 0, 1);
-            await sleep(3);
+            await sleep(5);
           }
         }
       }
@@ -123,18 +122,11 @@ async function moveAllItems(window) {
     
     const finalCount = countTradeItems(window);
     if (finalCount > 0) {
-      await sleep(50);
+      await sleep(100);
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
+      isClosing = true;
       bot.closeWindow(window);
-      
-      sellCommandSent = false;
-      setTimeout(() => {
-        if (bot) {
-          log(`💬 كتابة /sell`);
-          bot.chat('/sell');
-          sellCommandSent = true;
-        }
-      }, 300);
+      isClosing = false;
     } else {
       log(`⚠️ لا توجد أغراض للبيع`);
     }
@@ -260,28 +252,6 @@ function attackNearest() {
   }
 }
 
-async function startViewer() {
-  if (viewerStarted) return;
-  try {
-    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
-    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
-    viewerStarted = true;
-    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-
-    const tunnel = await localtunnel({ port: viewerPort });
-    log(`🌍 كاميرا عامة عبر LocalTunnel: ${tunnel.url}`);
-
-    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
-    await axios.post(`${apiUrl}/api/register-camera-url`, {
-      botId: config.botId,
-      url: tunnel.url
-    });
-  } catch (err) {
-    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
-  }
-}
-
 async function authenticateBot() {
   log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
   const userIdentifier = `bot_${config.botId}_${Date.now()}`;
@@ -299,7 +269,7 @@ async function authenticateBot() {
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
     log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
-    const apiUrl = process.env.API_URL || 'http://localhost:3000';
+    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
     try {
       await axios.post(`${apiUrl}/api/save-bot-token`, {
         botId: config.botId,
@@ -371,13 +341,13 @@ async function createBot() {
   
   bot.on('spawn', async () => {
     log(`📍 ظهر البوت في العالم`);
+    botReady = true;
     
     setTimeout(() => equipEverythingFast(), 100);
     setInterval(() => equipEverythingFast(), 1000);
     setInterval(() => updateStats(), 1000);
     setInterval(() => sendInventory(), 3000);
     
-    // الأكل التلقائي
     setInterval(() => {
       if (!bot || !bot.entity || bot.health <= 0) return;
       if (isEating) return;
@@ -399,32 +369,50 @@ async function createBot() {
         }
       }
     }, 5000);
-    
-    if (!viewerStarted) await startViewer();
 
     // ========== وضع البياع (SELLER MODE) ==========
     if (config.botType === 'seller') {
       const sellCmd = process.env.SELL_COMMAND || '/sell';
+      isSellerMode = true;
+      
       log(`🛒 تشغيل بوت البياع (نقل بـ Shift+Click)`);
       
-      // كتابة /sell
+      // الانتظار 3 ثواني قبل كتابة /sell للتأكد من استقرار الاتصال
       setTimeout(() => {
-        if (bot && !sellCommandSent) {
+        if (bot && botReady && !sellCommandSent) {
           sellCommandSent = true;
+          log(`💬 كتابة /sell`);
           bot.chat(sellCmd);
         }
-      }, 1500);
+      }, 3000);
 
       // عند فتح النافذة
       bot.on('windowOpen', async (window) => {
+        if (currentWindow) return;
+        currentWindow = window;
         log(`📦 نافذة مفتوحة`);
         isProcessing = false;
-        await sleep(50);
+        await sleep(100);
         moveAllItems(window);
       });
 
+      // عند إغلاق النافذة
       bot.on('windowClose', () => {
+        if (isClosing) return;
+        if (!currentWindow) return;
+        
+        currentWindow = null;
         log(`📦 نافذة مقفلة`);
+        
+        // الانتظار 1 ثانية قبل إعادة كتابة /sell
+        sellCommandSent = false;
+        setTimeout(() => {
+          if (bot && botReady && isSellerMode && !sellCommandSent) {
+            sellCommandSent = true;
+            log(`💬 إعادة كتابة /sell`);
+            bot.chat(sellCmd);
+          }
+        }, 1000);
       });
     }
     
@@ -470,7 +458,7 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    viewerStarted = false;
+    botReady = false;
     if (isDisconnecting) {
       process.exit(0);
     }
