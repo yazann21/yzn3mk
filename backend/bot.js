@@ -4,9 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const { Authflow, Titles } = require('prismarine-auth');
 const axios = require('axios');
+const localtunnel = require('localtunnel');
 
 let bot = null;
 let logFile = null;
+let viewerStarted = false;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -20,8 +22,6 @@ let totalItems = 0;
 let totalSales = 0;
 let startTime = Date.now();
 let isProcessing = false;
-let isSellerMode = false;
-let currentWindow = null;
 
 const args = process.argv.slice(2);
 const config = {
@@ -70,7 +70,7 @@ function countTradeItems(window) {
   return count;
 }
 
-// ===== وضع البياع (Seller Mode) مع تكرار لا نهائي =====
+// ===== وضع البياع (Seller Mode) =====
 async function moveAllItems(window) {
   if (isProcessing) return;
   isProcessing = true;
@@ -78,14 +78,9 @@ async function moveAllItems(window) {
   try {
     const inventorySlots = getInventorySlots(window);
     
-    // إذا المخزون فارغ، ننتظر شوي ونعيد المحاولة
     if (inventorySlots.length === 0) {
-      log(`⏳ المخزون فارغ، انتظار أغراض جديدة...`);
+      log(`⚠️ المخزون فارغ`);
       isProcessing = false;
-      // نعيد المحاولة بعد 2 ثانية
-      setTimeout(() => {
-        if (currentWindow) moveAllItems(currentWindow);
-      }, 2000);
       return;
     }
     
@@ -100,9 +95,8 @@ async function moveAllItems(window) {
     
     log(`✅ تم نقل كل الأغراض`);
     
-    // التحقق المستمر حتى تمتلئ القائمة
     let checkCount = 0;
-    const maxChecks = 300; // 300 × 50ms = 15 ثانية كحد أقصى
+    const maxChecks = 200;
     
     while (checkCount < maxChecks) {
       const tradeCount = countTradeItems(window);
@@ -133,7 +127,6 @@ async function moveAllItems(window) {
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
       bot.closeWindow(window);
       
-      // نكرر العملية
       sellCommandSent = false;
       setTimeout(() => {
         if (bot) {
@@ -143,21 +136,11 @@ async function moveAllItems(window) {
         }
       }, 300);
     } else {
-      log(`⚠️ لا توجد أغراض للبيع، إعادة المحاولة...`);
-      isProcessing = false;
-      // نعيد المحاولة بعد 2 ثانية
-      setTimeout(() => {
-        if (currentWindow) moveAllItems(currentWindow);
-      }, 2000);
+      log(`⚠️ لا توجد أغراض للبيع`);
     }
     
   } catch (err) {
     log(`⚠️ خطأ: ${err.message}`);
-    isProcessing = false;
-    // نعيد المحاولة بعد 2 ثانية
-    setTimeout(() => {
-      if (currentWindow) moveAllItems(currentWindow);
-    }, 2000);
   } finally {
     isProcessing = false;
   }
@@ -277,6 +260,28 @@ function attackNearest() {
   }
 }
 
+async function startViewer() {
+  if (viewerStarted) return;
+  try {
+    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
+    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
+    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
+    viewerStarted = true;
+    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
+
+    const tunnel = await localtunnel({ port: viewerPort });
+    log(`🌍 كاميرا عامة عبر LocalTunnel: ${tunnel.url}`);
+
+    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+    await axios.post(`${apiUrl}/api/register-camera-url`, {
+      botId: config.botId,
+      url: tunnel.url
+    });
+  } catch (err) {
+    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
+  }
+}
+
 async function authenticateBot() {
   log(`🔐 بدء مصادقة مايكروسوفت للحصول على توكن حساب حقيقي...`);
   const userIdentifier = `bot_${config.botId}_${Date.now()}`;
@@ -294,7 +299,7 @@ async function authenticateBot() {
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
     log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
-    const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const apiUrl = process.env.API_URL || 'http://localhost:3000';
     try {
       await axios.post(`${apiUrl}/api/save-bot-token`, {
         botId: config.botId,
@@ -394,11 +399,12 @@ async function createBot() {
         }
       }
     }, 5000);
+    
+    if (!viewerStarted) await startViewer();
 
     // ========== وضع البياع (SELLER MODE) ==========
     if (config.botType === 'seller') {
       const sellCmd = process.env.SELL_COMMAND || '/sell';
-      isSellerMode = true;
       log(`🛒 تشغيل بوت البياع (نقل بـ Shift+Click)`);
       
       // كتابة /sell
@@ -411,7 +417,6 @@ async function createBot() {
 
       // عند فتح النافذة
       bot.on('windowOpen', async (window) => {
-        currentWindow = window;
         log(`📦 نافذة مفتوحة`);
         isProcessing = false;
         await sleep(50);
@@ -419,17 +424,7 @@ async function createBot() {
       });
 
       bot.on('windowClose', () => {
-        currentWindow = null;
         log(`📦 نافذة مقفلة`);
-        // إعادة كتابة /sell تلقائياً
-        sellCommandSent = false;
-        setTimeout(() => {
-          if (bot && isSellerMode) {
-            log(`💬 إعادة كتابة /sell`);
-            bot.chat(sellCmd);
-            sellCommandSent = true;
-          }
-        }, 500);
       });
     }
     
