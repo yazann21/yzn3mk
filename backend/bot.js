@@ -235,7 +235,7 @@ function cleanup() {
   currentWindow = null;
 }
 
-// ===== وظائف البيع السريع (الكود الجديد) =====
+// ===== وظائف البيع السريع (وضع البياع) =====
 function getInventorySlots(window) {
   const slots = [];
   for (let i = 54; i <= 89; i++) {
@@ -457,66 +457,61 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-    // ========== وضع البياع (SELLER MODE) باستخدام الكود الجديد ==========
+    // =========================================
+    // ===== وضع البياع (SELLER) =====
+    // =========================================
     if (config.botType === 'seller') {
-      const sellCmd = process.env.SELL_COMMAND || '/sell';
+      log(`🛒 تفعيل وضع البياع - جاري الانتظار لفتح نافذة البيع...`);
       
-      log(`🛒 تشغيل بوت البياع (بيع سريع بـ Shift+Click مع انتظار الأغراض)`);
-      
-      const sendSellCommand = () => {
-        if (!sellCommandSent) {
+      // إرسال أمر /sell عند الظهور
+      setTimeout(() => {
+        if (bot && !sellCommandSent) {
           sellCommandSent = true;
-          bot.chat(sellCmd);
+          bot.chat('/sell');
+          log(`💬 كتابة /sell`);
         }
-      };
-      
-      setTimeout(sendSellCommand, 1500);
-      
+      }, 2000);
+
+      // مراقبة فتح النافذة
       bot.on('windowOpen', async (window) => {
         currentWindow = window;
-        log(`📦 نافذة مفتوحة`);
+        log(`📦 نافذة مفتوحة (وضع البياع)`);
         isProcessing = false;
         isWaitingForItems = false;
-        
-        if (checkInterval) {
-          clearInterval(checkInterval);
-          checkInterval = null;
-        }
-        
         await sleep(50);
         moveAllItems(window);
       });
 
       bot.on('windowClose', () => {
         currentWindow = null;
-        log(`📦 نافذة مقفلة`);
-        
+        isWaitingForItems = false;
         if (checkInterval) {
           clearInterval(checkInterval);
           checkInterval = null;
         }
-        isWaitingForItems = false;
-        isProcessing = false;
+        log(`📦 نافذة مقفلة (وضع البياع)`);
         
-        sellCommandSent = false;
+        // إعادة كتابة /sell بعد إغلاق النافذة
         setTimeout(() => {
-          if (bot) {
-            log(`💬 كتابة /sell (إعادة فتح النافذة)`);
-            bot.chat(sellCmd);
+          if (bot && !isProcessing) {
+            sellCommandSent = false;
+            bot.chat('/sell');
+            log(`💬 إعادة كتابة /sell`);
             sellCommandSent = true;
           }
-        }, 300);
+        }, 500);
       });
       
-      log(`🛒 تم إعداد البوت البياع (بيع سريع مع انتظار الأغراض)`);
-    }
-    
-    // ========== الأنواع الأخرى ==========
-    if (config.botType === 'afk') {
+    // =========================================
+    // ===== الأوضاع الأخرى =====
+    // =========================================
+    } else if (config.botType === 'afk') {
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
+      
     } else if (config.botType === 'hunter') {
       huntInterval = setInterval(() => attackNearest(), 2000);
       bot.on('entityHurt', (e) => { if (e === bot.entity) attackNearest(); });
+      
     } else if (config.botType === 'coward') {
       bot.on('entityHurt', (entity) => {
         if (entity === bot.entity) {
