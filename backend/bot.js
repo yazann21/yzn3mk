@@ -17,11 +17,11 @@ let killCount = 0;
 let deathCount = 0;
 let isDisconnecting = false;
 let isEating = false;
-let sellCommandSent = false;
 let totalItems = 0;
 let totalSales = 0;
 let startTime = Date.now();
 let isProcessing = false;
+let sellCommandSent = false;
 
 const args = process.argv.slice(2);
 const config = {
@@ -70,7 +70,7 @@ function countTradeItems(window) {
   return count;
 }
 
-// ===== وضع البياع (Seller Mode) =====
+// ===== وضع البياع =====
 async function moveAllItems(window) {
   if (isProcessing) return;
   isProcessing = true;
@@ -127,14 +127,15 @@ async function moveAllItems(window) {
       log(`🚪 إغلاق النافذة (بيع ${finalCount} غرض)`);
       bot.closeWindow(window);
       
-      sellCommandSent = false;
+      // إعادة تعيين العلم للسماح بكتابة /sell مرة أخرى
       setTimeout(() => {
-        if (bot) {
+        sellCommandSent = false;
+        if (bot && bot.entity) {
           log(`💬 كتابة /sell`);
           bot.chat('/sell');
           sellCommandSent = true;
         }
-      }, 300);
+      }, 500);
     } else {
       log(`⚠️ لا توجد أغراض للبيع`);
     }
@@ -407,24 +408,37 @@ async function createBot() {
       const sellCmd = process.env.SELL_COMMAND || '/sell';
       log(`🛒 تشغيل بوت البياع (نقل بـ Shift+Click)`);
       
-      // كتابة /sell
+      // ✅ انتظر 3 ثواني بعد spawn قبل كتابة /sell
       setTimeout(() => {
-        if (bot && !sellCommandSent) {
+        if (bot && bot.entity && !sellCommandSent) {
           sellCommandSent = true;
+          log(`💬 كتابة الأمر ${sellCmd}`);
           bot.chat(sellCmd);
         }
-      }, 1500);
+      }, 3000);
 
       // عند فتح النافذة
       bot.on('windowOpen', async (window) => {
-        log(`📦 نافذة مفتوحة`);
-        isProcessing = false;
-        await sleep(50);
-        moveAllItems(window);
+        // تأكد من أنها نافذة البيع (90 سلوت)
+        if (window.slots.length === 90) {
+          log(`📦 نافذة البيع مفتوحة`);
+          isProcessing = false;
+          await sleep(100);
+          moveAllItems(window);
+        }
       });
 
       bot.on('windowClose', () => {
         log(`📦 نافذة مقفلة`);
+        // إعادة تعيين العلم بعد 500ms
+        setTimeout(() => {
+          sellCommandSent = false;
+          if (bot && bot.entity) {
+            log(`💬 كتابة الأمر ${sellCmd}`);
+            bot.chat(sellCmd);
+            sellCommandSent = true;
+          }
+        }, 500);
       });
     }
     
