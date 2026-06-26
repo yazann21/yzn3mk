@@ -21,6 +21,9 @@ let isProcessing = false;
 let sellCommandSent = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 999;
+let currentWindow = null;
+let isWaitingForItems = false;
+let checkInterval = null;
 
 const args = process.argv.slice(2);
 const config = {
@@ -45,6 +48,10 @@ function log(msg) {
   console.log(`[${timestamp}] ${msg}`); 
   logFile.write(`[${timestamp}] ${msg}\n`); 
   if (process.send) process.send({ type: 'log', message: msg }); 
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function updateStats() {
@@ -199,7 +206,7 @@ async function authenticateBot() {
   });
   const tokenResult = await flow.getMinecraftJavaToken({ fetchProfile: true });
   if (tokenResult && tokenResult.token && tokenResult.profile) {
-    log(`✅ تم الحصول على توكن الحساب: ${tokenResult.profile.name}`);
+    log(`✅ تم الحصول على التوكن الحساب: ${tokenResult.profile.name}`);
     const apiUrl = process.env.API_URL || 'http://localhost:3000';
     try {
       await axios.post(`${apiUrl}/api/save-bot-token`, {
@@ -222,15 +229,13 @@ async function authenticateBot() {
 function cleanup() {
   if (combatInterval) clearInterval(combatInterval);
   if (huntInterval) clearInterval(huntInterval);
-  combatInterval = huntInterval = null;
+  if (checkInterval) clearInterval(checkInterval);
+  combatInterval = huntInterval = checkInterval = null;
   currentTarget = null;
+  currentWindow = null;
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// ===== وظائف البيع السريع =====
+// ===== وظائف البيع السريع (الكود الجديد) =====
 function getInventorySlots(window) {
   const slots = [];
   for (let i = 54; i <= 89; i++) {
@@ -249,24 +254,46 @@ function countTradeItems(window) {
   return count;
 }
 
-async function quickSell(window) {
+function hasItemsInInventory(window) {
+  const slots = getInventorySlots(window);
+  return slots.length > 0;
+}
+
+async function moveAllItems(window) {
   if (isProcessing) return;
   isProcessing = true;
+  isWaitingForItems = false;
+  
+  if (checkInterval) {
+    clearInterval(checkInterval);
+    checkInterval = null;
+  }
   
   try {
     const inventorySlots = getInventorySlots(window);
     
-    // إذا المخزون فاضي → ننتظر 5 ثواني ثم نعيد المحاولة
     if (inventorySlots.length === 0) {
-      log(`⏳ المخزون فاضي، انتظار 5 ثواني ثم إعادة المحاولة...`);
-      isProcessing = false;
-      setTimeout(() => {
-        if (bot) {
-          log(`🔄 إعادة محاولة البيع...`);
-          sellCommandSent = false;
-          bot.chat('/sell');
+      log(`⚠️ المخزون فارغ - جاري الانتظار لوصول أغراض جديدة...`);
+      isWaitingForItems = true;
+      
+      checkInterval = setInterval(() => {
+        if (currentWindow && !isProcessing && isWaitingForItems) {
+          const hasItems = hasItemsInInventory(currentWindow);
+          if (hasItems) {
+            log(`📦 تم اكتشاف أغراض جديدة في المخزون!`);
+            isWaitingForItems = false;
+            if (checkInterval) {
+              clearInterval(checkInterval);
+              checkInterval = null;
+            }
+            moveAllItems(currentWindow);
+          } else {
+            log(`⏳ لا زال المخزون فارغاً... انتظار المزيد`);
+          }
         }
       }, 5000);
+      
+      isProcessing = false;
       return;
     }
     
@@ -279,10 +306,12 @@ async function quickSell(window) {
       }
     }
     
+    log(`✅ تم نقل كل الأغراض`);
+    
     let checkCount = 0;
     const maxChecks = 200;
     
-    while (checkCount < maxChecks) {
+    while (checkCount < maxChecks && !isWaitingForItems) {
       const tradeCount = countTradeItems(window);
       
       if (tradeCount >= 45) {
@@ -292,6 +321,7 @@ async function quickSell(window) {
       
       const remaining = getInventorySlots(window);
       if (remaining.length > 0) {
+        log(`📦 نقل ${remaining.length} غرض متبقي`);
         for (const slot of remaining) {
           if (window.slots[slot]) {
             bot.clickWindow(slot, 0, 1);
@@ -313,28 +343,41 @@ async function quickSell(window) {
       sellCommandSent = false;
       setTimeout(() => {
         if (bot) {
+          log(`💬 كتابة /sell`);
           bot.chat('/sell');
           sellCommandSent = true;
         }
       }, 300);
     } else {
-      log(`⚠️ لا توجد أغراض للبيع، إعادة المحاولة...`);
-      isProcessing = false;
-      setTimeout(() => {
-        if (bot) {
-          sellCommandSent = false;
-          bot.chat('/sell');
+      log(`⚠️ لا توجد أغراض للبيع، جاري الانتظار...`);
+      isWaitingForItems = true;
+      
+      checkInterval = setInterval(() => {
+        if (currentWindow && !isProcessing && isWaitingForItems) {
+          const hasItems = hasItemsInInventory(currentWindow);
+          if (hasItems) {
+            log(`📦 تم اكتشاف أغراض جديدة!`);
+            isWaitingForItems = false;
+            if (checkInterval) {
+              clearInterval(checkInterval);
+              checkInterval = null;
+            }
+            moveAllItems(currentWindow);
+          }
         }
-      }, 3000);
+      }, 5000);
     }
     
   } catch (err) {
     log(`⚠️ خطأ في البيع: ${err.message}`);
   } finally {
-    isProcessing = false;
+    if (!isWaitingForItems) {
+      isProcessing = false;
+    }
   }
 }
 
+// ===== تشغيل البوت =====
 async function createBot() {
   const authType = process.env.AUTH_TYPE || 'offline';
   
@@ -414,11 +457,11 @@ async function createBot() {
     
     if (!viewerStarted) await startViewer();
 
-    // ========== وضع البياع (SELLER MODE) ==========
+    // ========== وضع البياع (SELLER MODE) باستخدام الكود الجديد ==========
     if (config.botType === 'seller') {
       const sellCmd = process.env.SELL_COMMAND || '/sell';
       
-      log(`🛒 تشغيل بوت البياع (بيع سريع بـ Shift+Click)`);
+      log(`🛒 تشغيل بوت البياع (بيع سريع بـ Shift+Click مع انتظار الأغراض)`);
       
       const sendSellCommand = () => {
         if (!sellCommandSent) {
@@ -430,24 +473,42 @@ async function createBot() {
       setTimeout(sendSellCommand, 1500);
       
       bot.on('windowOpen', async (window) => {
+        currentWindow = window;
         log(`📦 نافذة مفتوحة`);
         isProcessing = false;
+        isWaitingForItems = false;
+        
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
+        
         await sleep(50);
-        quickSell(window);
+        moveAllItems(window);
       });
 
       bot.on('windowClose', () => {
+        currentWindow = null;
         log(`📦 نافذة مقفلة`);
+        
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+        }
+        isWaitingForItems = false;
+        isProcessing = false;
+        
         sellCommandSent = false;
         setTimeout(() => {
           if (bot) {
+            log(`💬 كتابة /sell (إعادة فتح النافذة)`);
             bot.chat(sellCmd);
             sellCommandSent = true;
           }
         }, 300);
       });
       
-      log(`🛒 تم إعداد البوت البياع (بيع سريع)`);
+      log(`🛒 تم إعداد البوت البياع (بيع سريع مع انتظار الأغراض)`);
     }
     
     // ========== الأنواع الأخرى ==========
@@ -495,6 +556,8 @@ async function createBot() {
     viewerStarted = false;
     sellCommandSent = false;
     isProcessing = false;
+    isWaitingForItems = false;
+    currentWindow = null;
     
     if (isDisconnecting) {
       process.exit(0);
