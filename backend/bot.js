@@ -7,7 +7,6 @@ const axios = require('axios');
 
 let bot = null;
 let logFile = null;
-let viewerStarted = false;
 let combatInterval = null;
 let huntInterval = null;
 let currentTarget = null;
@@ -161,40 +160,6 @@ function attackNearest() {
   if (nearest) {
     const playerName = Object.keys(bot.players).find(name => bot.players[name].entity === nearest);
     if (playerName && !teamList.includes(playerName.toLowerCase())) followAndAttack(nearest, playerName);
-  }
-}
-
-async function startViewer() {
-  if (viewerStarted) return;
-  try {
-    const viewerPort = parseInt(process.env.VIEWER_PORT) || (8080 + parseInt(config.botId));
-    const { mineflayer: mineflayerViewer } = require('prismarine-viewer');
-    mineflayerViewer(bot, { port: viewerPort, firstPerson: false, viewDistance: 6 });
-    viewerStarted = true;
-    log(`🎥 كاميرا محلية على المنفذ ${viewerPort}`);
-
-    if (process.env.NGROK_AUTHTOKEN) {
-      const ngrok = require('@ngrok/ngrok');
-      await ngrok.authtoken(process.env.NGROK_AUTHTOKEN);
-      const listener = await ngrok.forward({ addr: viewerPort, authtoken_from_env: true });
-      const publicUrl = listener.url();
-      log(`🌍 كاميرا عامة عبر ngrok: ${publicUrl}`);
-      
-      const apiUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3000}`;
-      try {
-        await axios.post(`${apiUrl}/api/register-camera-url`, {
-          botId: config.botId,
-          url: publicUrl
-        });
-        log(`📤 تم إرسال رابط الكاميرا إلى الخادم الرئيسي`);
-      } catch (err) {
-        log(`⚠️ فشل إرسال الرابط: ${err.message}`);
-      }
-    } else {
-      log(`⚠️ لم يتم تعيين NGROK_AUTHTOKEN، الكاميرا متاحة محلياً فقط`);
-    }
-  } catch (err) {
-    log(`⚠️ فشل تشغيل الكاميرا: ${err.message}`);
   }
 }
 
@@ -421,9 +386,6 @@ async function createBot() {
         }
       }
     }, 5000);
-    
-    // ========== كاميرا ==========
-    if (!viewerStarted) await startViewer();
 
     // ============================================================
     // ========== وضع البياع (SELLER MODE) - نسخة البوت الثاني ==========
@@ -505,7 +467,6 @@ async function createBot() {
   bot.on('end', (reason) => {
     log(`❌ انقطع الاتصال: ${reason}`);
     cleanup();
-    viewerStarted = false;
     // إعادة تعيين متغيرات البياع عند قطع الاتصال
     sellCommandSent = false;
     currentWindow = null;
